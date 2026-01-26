@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\EOController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -23,5 +24,10 @@ Route::middleware(['role:system_admin'])->group(function () {
         Route::resource('statuses', StatusController::class);
         Route::resource('departments', DepartmentController::class);
     });
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    
+    Route::resource('eo', EOController::class);
+});
 
 require __DIR__.'/settings.php';

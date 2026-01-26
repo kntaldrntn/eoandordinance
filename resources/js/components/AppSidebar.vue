@@ -46,7 +46,7 @@ const mainNavItems = computed(() => {
         },
         {
             title: 'EO Profiling',
-            href: '#', 
+            href: route('eo.index'),
             icon: FileText,
             roles: ['system_admin', 'supervisor']
         },
