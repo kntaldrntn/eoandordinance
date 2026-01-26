@@ -70,7 +70,7 @@ const mainNavItems = computed(() => {
         },
         {
             title: 'User Management',
-            href: '#',
+            href: route('users.index'),
             icon: Users,
             roles: ['system_admin']
         },

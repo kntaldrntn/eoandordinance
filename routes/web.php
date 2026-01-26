@@ -20,9 +20,7 @@ Route::get('dashboard', function () {
 Route::middleware(['role:system_admin'])->group(function () {
         
         Route::resource('users', UserController::class);
-        
         Route::resource('statuses', StatusController::class);
-        
         Route::resource('departments', DepartmentController::class);
     });
 
