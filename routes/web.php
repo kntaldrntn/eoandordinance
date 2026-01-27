@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EOController;
+use App\Http\Controllers\IRRController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,7 @@ Route::middleware(['role:system_admin'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     
     Route::resource('eo', EOController::class);
+    Route::resource('irr', IRRController::class);
 });
 
 require __DIR__.'/settings.php';

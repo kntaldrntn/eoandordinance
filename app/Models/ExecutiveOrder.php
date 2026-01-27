@@ -36,4 +36,8 @@ class ExecutiveOrder extends Model
     {
         return $this->hasMany(ExecutiveOrder::class, 'amends_eo_id');
     }
+    public function implementingRules()
+    {
+        return $this->hasMany(ImplementingRuleandRegulation::class);
+    }
 }

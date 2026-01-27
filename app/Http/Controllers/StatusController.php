@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB; // Using DB facade for simple tables is often faster
+use Illuminate\Support\Facades\DB; 
 use Inertia\Inertia;
 
 class StatusController extends Controller

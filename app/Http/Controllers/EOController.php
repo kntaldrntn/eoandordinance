@@ -14,7 +14,7 @@ class EOController extends Controller
     public function index(Request $request)
     {
         // 1. Fetch the EOs with their relationships for the Table
-        $query = ExecutiveOrder::with(['status', 'departments', 'parentEO']);
+        $query = ExecutiveOrder::with(['status', 'departments', 'parentEO', 'implementingRules.leadOffice']);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -29,7 +29,6 @@ class EOController extends Controller
                      ->withQueryString();
 
         // 2. Fetch Data for the Modal Dropdowns
-        // We load these NOW so the modal works instantly without a second network call
         $departments = Department::orderBy('name')->get();
         $statuses = DB::table('statuses')->orderBy('name')->get();
 

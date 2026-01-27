@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon } from 'lucide-vue-next'; // Added LinkIcon
+import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -20,10 +20,18 @@ const props = defineProps<{
             effectivity_date: string;
             legal_basis: string;
             status_id: number;
-            amends_eo_id: number | null; 
+            amends_eo_id: number | null;
             parent_e_o: { eo_number: string } | null;
             status: { name: string };
             departments: Array<{ id: number; name: string; pivot: { role: string } }>;
+            // NEW: List of IRRs
+            implementing_rules: Array<{
+                id: number;
+                status: string;
+                file_url: string;
+                lead_office: { name: string };
+                created_at: string;
+            }>;
         }>;
         links: Array<any>;
         from: number; to: number; total: number;
@@ -31,7 +39,7 @@ const props = defineProps<{
     };
     departments: Array<{ id: number; name: string }>;
     statuses: Array<{ id: number; name: string }>;
-    existing_eos: Array<{ id: number; eo_number: string; title: string }>; 
+    existing_eos: Array<{ id: number; eo_number: string; title: string }>;
     filters?: { search?: string };
     flash?: { success?: string; error?: string };
 }>();
@@ -77,13 +85,13 @@ watch(() => props.flash, (flash) => {
     if (flash?.error) notyf.error(flash.error);
 }, { immediate: true, deep: true });
 
-// --- Modal & Form State ---
+// --- EO MODAL STATE ---
 const showDialog = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
 
 const form = useForm({
-    amends_eo_id: '' as string | number, 
+    amends_eo_id: '' as string | number,
     eo_number: '',
     title: '',
     date_issued: '',
@@ -95,6 +103,20 @@ const form = useForm({
     file: null as File | null,
 });
 
+// --- IRR MODAL STATE ---
+const showIRRDialog = ref(false);
+const selectedEO = ref<any>(null); // To store which EO we are managing
+
+const irrForm = useForm({
+    executive_order_id: '' as string | number,
+    lead_office_id: '' as string | number,
+    status: 'Drafting', // Default
+    file: null as File | null,
+});
+
+const irrStatuses = ['Drafting', 'Pending Approval', 'Approved', 'Implemented', 'Delayed'];
+
+// --- Functions for EO Modal ---
 function openAddDialog() {
     isEdit.value = false;
     editingId.value = null;
@@ -114,16 +136,47 @@ function openEditDialog(eo: any) {
     form.legal_basis = eo.legal_basis || '';
     form.status_id = eo.status_id;
     form.amends_eo_id = eo.amends_eo_id || '';
-
+    
     const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
-    form.support_office_ids = eo.departments
-        .filter((d: any) => d.pivot.role === 'support')
-        .map((d: any) => d.id);
-    
+    form.support_office_ids = eo.departments.filter((d: any) => d.pivot.role === 'support').map((d: any) => d.id);
     form.file = null; 
-
     showDialog.value = true;
+}
+
+// --- Functions for IRR Modal ---
+function openIRRDialog(eo: any) {
+    selectedEO.value = eo;
+    irrForm.reset();
+    irrForm.clearErrors();
+    // Pre-fill: Assume the IRR is led by the same office as the EO (User can change)
+    const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
+    irrForm.lead_office_id = lead ? lead.id : '';
+    irrForm.executive_order_id = eo.id;
+    
+    showIRRDialog.value = true;
+}
+
+function handleIRRFileChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+        irrForm.file = target.files[0];
+    }
+}
+
+function submitIRR() {
+    irrForm.post(route('irr.store'), {
+        onSuccess: () => {
+            irrForm.reset();
+            // We keep the modal open so they can see the new list, 
+            // but we need to refresh the selectedEO data to show the new file.
+            // Since Inertia refreshes props automatically, we just update selectedEO from the fresh props
+            // A simple trick: close and reopen, or just rely on the list updating if we passed props correctly.
+            // For now, let's just show success and close.
+            showIRRDialog.value = false;
+            notyf.success('IRR Added Successfully');
+        },
+    });
 }
 
 function handleFileChange(e: Event) {
@@ -135,21 +188,12 @@ function handleFileChange(e: Event) {
 
 function submitForm() {
     if (isEdit.value && editingId.value) {
-        form.transform((data) => ({
-            ...data,
-            _method: 'PUT',
-        })).post(route('eo.update', editingId.value), {
-            onSuccess: () => {
-                showDialog.value = false;
-                form.reset();
-            },
+        form.transform((data) => ({ ...data, _method: 'PUT' })).post(route('eo.update', editingId.value), {
+            onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     } else {
         form.post(route('eo.store'), {
-            onSuccess: () => {
-                showDialog.value = false;
-                form.reset();
-            },
+            onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     }
 }
@@ -208,9 +252,9 @@ const getLeadOffice = (depts: any[]) => {
                                     <td class="px-6 py-3 font-mono font-medium text-blue-600">{{ eo.eo_number }}</td>
                                     <td class="px-6 py-3">
                                         <div class="line-clamp-2 text-gray-900">{{ eo.title }}</div>
-                                        
                                         <div v-if="eo.parent_e_o" class="mt-1 flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100">
-                                            <LinkIcon class="w-3 h-3" /> <span>Amends: {{ eo.parent_e_o.eo_number }}</span>
+                                            <LinkIcon class="w-3 h-3" />
+                                            <span>Amends: {{ eo.parent_e_o.eo_number }}</span>
                                         </div>
                                     </td>
                                     <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.date_issued }}</td>
@@ -226,11 +270,22 @@ const getLeadOffice = (depts: any[]) => {
                                         </span>
                                     </td>
                                     <td class="px-6 py-3 text-center">
-                                        <div class="flex items-center justify-center gap-4">
-                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">View</a>
-                                            <span v-else class="text-sm text-gray-400 cursor-not-allowed">—</span>
+                                        <div class="flex items-center justify-center gap-3">
+                                            <button 
+                                                @click="openIRRDialog(eo)" 
+                                                class="group relative flex items-center justify-center rounded-lg bg-green-50 p-2 text-green-600 hover:bg-green-100 transition-colors"
+                                                title="Manage Implementing Rules"
+                                            >
+                                                <BookOpen class="w-4 h-4" />
+                                                <span v-if="eo.implementing_rules?.length > 0" class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 border border-white"></span>
+                                            </button>
+
                                             <span class="text-gray-300">|</span>
-                                            <button @click="openEditDialog(eo)" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">Edit</button>
+
+                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">View</a>
+                                            <span v-else class="text-sm text-gray-400 cursor-not-allowed">—</span>
+                                            
+                                            <button @click="openEditDialog(eo)" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">Edit</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -248,7 +303,7 @@ const getLeadOffice = (depts: any[]) => {
                         </tbody>
                     </table>
                 </div>
-                <div v-if="eos.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-4 py-3">
+                 <div v-if="eos.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-4 py-3">
                     <p class="text-sm text-gray-600">Showing <span class="font-medium">{{ eos.from }}</span>–<span class="font-medium">{{ eos.to }}</span> of <span class="font-medium">{{ eos.total }}</span></p>
                     <div class="flex gap-1">
                         <button v-for="(link, index) in eos.links.slice(1, -1)" :key="index" @click="goToPage(String(link.url))" :disabled="!link.url" class="rounded-md px-3 py-1 text-sm transition" :class="[link.active ? 'bg-blue-600 font-medium text-white' : 'border bg-white text-gray-600 hover:bg-gray-100']"><span v-html="link.label"></span></button>
@@ -259,129 +314,159 @@ const getLeadOffice = (depts: any[]) => {
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-3xl rounded-xl bg-white p-6 shadow-xl max-h-[95vh] overflow-y-auto">
-                        
                         <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
                             <div>
                                 <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <FileText class="w-6 h-6 text-blue-600" />
                                     {{ isEdit ? 'Edit Executive Order' : 'Encode Executive Order' }}
                                 </h2>
-                                <p class="text-sm text-gray-500 mt-1">
-                                    {{ isEdit ? 'Update details and assignments.' : 'Create a new record and assign implementing offices.' }}
-                                </p>
+                                <p class="text-sm text-gray-500 mt-1">{{ isEdit ? 'Update details.' : 'Create a new record.' }}</p>
                             </div>
-                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 transition-colors bg-gray-50 hover:bg-gray-100 rounded-full p-2">×</button>
+                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-full p-2">×</button>
                         </div>
-
                         <form @submit.prevent="submitForm" class="space-y-6">
-                            
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">EO Number</label>
-                                    <input v-model="form.eo_number" type="text" placeholder="e.g., EO-2026-001" class="w-full rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all" />
+                                    <input v-model="form.eo_number" type="text" class="w-full rounded-lg border-gray-300" />
                                     <p v-if="form.errors.eo_number" class="text-red-500 text-xs mt-1">{{ form.errors.eo_number }}</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                                    <select v-model="form.status_id" class="w-full rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all">
-                                        <option value="" disabled>Select Status</option>
+                                    <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
                                         <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                     </select>
-                                    <p v-if="form.errors.status_id" class="text-red-500 text-xs mt-1">{{ form.errors.status_id }}</p>
                                 </div>
                                 <div class="col-span-1 md:col-span-2">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Title / Subject</label>
-                                    <textarea v-model="form.title" rows="3" class="w-full rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all" placeholder="An Order Creating the..."></textarea>
-                                    <p v-if="form.errors.title" class="text-red-500 text-xs mt-1">{{ form.errors.title }}</p>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                                    <textarea v-model="form.title" rows="2" class="w-full rounded-lg border-gray-300"></textarea>
                                 </div>
-
                                 <div class="col-span-1 md:col-span-2">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                                        <LinkIcon class="w-4 h-4 text-gray-400" />
-                                        Does this EO amend an existing one? (Optional)
-                                    </label>
-                                    <select v-model="form.amends_eo_id" class="w-full rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all">
-                                        <option value="">No, this is a new issuance (Parent)</option>
-                                        <option v-for="ex in existing_eos" :key="ex.id" :value="ex.id">
-                                            Amends: {{ ex.eo_number }} - {{ ex.title ? ex.title.substring(0, 60) + (ex.title.length > 60 ? '...' : '') : 'No Title' }}
-                                        </option>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Amends existing EO?</label>
+                                    <select v-model="form.amends_eo_id" class="w-full rounded-lg border-gray-300">
+                                        <option value="">No (Parent)</option>
+                                        <option v-for="ex in existing_eos" :key="ex.id" :value="ex.id">{{ ex.eo_number }} - {{ ex.title }}</option>
                                     </select>
-                                    <p class="text-xs text-gray-500 mt-1">Select the original EO if this is an amendment or repeal.</p>
                                 </div>
                             </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-100 pt-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6">
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">Date Issued</label>
-                                    <div class="relative">
-                                        <Calendar class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                                        <input v-model="form.date_issued" type="date" class="w-full rounded-lg border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all" />
-                                    </div>
+                                    <input v-model="form.date_issued" type="date" class="w-full rounded-lg border-gray-300" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Effectivity Date</label>
-                                    <div class="relative">
-                                        <Calendar class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                                        <input v-model="form.effectivity_date" type="date" class="w-full rounded-lg border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all" />
-                                    </div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Effectivity</label>
+                                    <input v-model="form.effectivity_date" type="date" class="w-full rounded-lg border-gray-300" />
                                 </div>
                                 <div class="col-span-1 md:col-span-2">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Legal Basis (Optional)</label>
-                                    <input v-model="form.legal_basis" type="text" placeholder="e.g., Section 455 of RA 7160" class="w-full rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all" />
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Legal Basis</label>
+                                    <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border-gray-300" />
                                 </div>
                             </div>
-
                             <div class="bg-blue-50/50 p-6 rounded-xl border border-blue-100/80 space-y-6">
-                                <h3 class="font-semibold text-blue-900 flex items-center gap-2">
-                                    <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Tagging</span>
-                                    Implementing Offices
-                                </h3>
-                                
                                 <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Lead Implementing Office</label>
-                                    <div class="relative">
-                                        <Building2 class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                                        <select v-model="form.lead_office_id" class="w-full rounded-lg border-gray-300 bg-white pl-10 pr-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all">
-                                            <option value="" disabled>Select Lead Office...</option>
-                                            <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Support Offices (Hold Ctrl/Cmd to select multiple)</label>
-                                    <select v-model="form.support_office_ids" multiple class="w-full h-32 rounded-lg border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm transition-all">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Lead Office</label>
+                                    <select v-model="form.lead_office_id" class="w-full rounded-lg border-gray-300">
                                         <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                     </select>
-                                    <p class="text-xs text-gray-500 mt-1.5">Selected: {{ form.support_office_ids.length }} offices</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Support Offices</label>
+                                    <select v-model="form.support_office_ids" multiple class="w-full h-32 rounded-lg border-gray-300">
+                                        <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                    </select>
                                 </div>
                             </div>
-
-                            <div class="border-t border-gray-100 pt-6">
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Upload Scanned EO (PDF)</label>
-                                <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer relative bg-white">
-                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                    <div class="space-y-2">
-                                        <div class="bg-blue-50 rounded-full p-3 inline-flex"><FileText class="w-8 h-8 text-blue-500" /></div>
-                                        <p class="text-sm text-gray-700"><span class="font-semibold text-blue-600 hover:underline">Click to upload</span> or drag and drop</p>
-                                        <p class="text-xs text-gray-400">PDF up to 10MB</p>
-                                    </div>
-                                </div>
-                                <div v-if="form.file" class="mt-3 text-sm text-green-700 font-medium flex items-center gap-2 bg-green-50 p-2 rounded-lg border border-green-100">
-                                    <span>✓ Selected: {{ form.file.name }}</span>
-                                </div>
-                                <p v-if="form.errors.file" class="text-red-500 text-xs mt-1">{{ form.errors.file }}</p>
+                            <div class="border-t pt-6">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Upload PDF</label>
+                                <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
                             </div>
-
-                            <div class="flex justify-end pt-6 border-t border-gray-100">
-                                <button type="button" class="mr-3 rounded-lg bg-white border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 font-medium transition-colors" @click="showDialog = false">Cancel</button>
-                                <button type="submit" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 shadow-md transition-all disabled:opacity-50 font-medium" :disabled="form.processing">
-                                    <Save class="w-4 h-4" />
-                                    {{ form.processing ? 'Saving...' : (isEdit ? 'Update EO' : 'Save EO') }}
+                            <div class="flex justify-end pt-6 border-t">
+                                <button type="button" class="mr-3 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg" @click="showDialog = false">Cancel</button>
+                                <button type="submit" class="bg-blue-600 px-6 py-2 text-white rounded-lg hover:bg-blue-700" :disabled="form.processing">
+                                    {{ form.processing ? 'Saving...' : 'Save' }}
                                 </button>
                             </div>
-
                         </form>
+                    </div>
+                </div>
+            </Transition>
+
+            <Transition name="fade">
+                <div v-if="showIRRDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
+                    <div class="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[95vh] overflow-y-auto">
+                        
+                        <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    <BookOpen class="w-6 h-6 text-green-600" />
+                                    Manage IRR
+                                </h2>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    For: <span class="font-medium text-gray-900">{{ selectedEO?.eo_number }}</span>
+                                </p>
+                            </div>
+                            <button @click="showIRRDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-full p-2">×</button>
+                        </div>
+
+                        <div class="mb-8">
+                            <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">Existing Implementing Rules</h3>
+                            
+                            <div v-if="selectedEO?.implementing_rules?.length > 0" class="space-y-3">
+                                <div v-for="rule in selectedEO.implementing_rules" :key="rule.id" class="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50 hover:border-blue-200 transition-colors">
+                                    <div class="flex items-center gap-3">
+                                        <div class="bg-white p-2 rounded border border-gray-200">
+                                            <FileText class="w-5 h-5 text-gray-500" />
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-900">{{ rule.status }}</p>
+                                            <p class="text-xs text-gray-500">Lead: {{ rule.lead_office?.name }}</p>
+                                        </div>
+                                    </div>
+                                    <a :href="rule.file_url" target="_blank" class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
+                                        <Download class="w-3 h-3" /> Download
+                                    </a>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                <p class="text-sm text-gray-500">No Implementing Rules encoded yet.</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-green-50/50 rounded-xl border border-green-100 p-5">
+                            <h3 class="text-sm font-bold text-green-900 uppercase tracking-wide mb-4 flex items-center gap-2">
+                                <Plus class="w-4 h-4" /> Add New Rule
+                            </h3>
+                            
+                            <form @submit.prevent="submitIRR" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Implementation Status</label>
+                                    <select v-model="irrForm.status" class="w-full rounded-lg border-gray-300 bg-white">
+                                        <option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Office in Charge of IRR</label>
+                                    <select v-model="irrForm.lead_office_id" class="w-full rounded-lg border-gray-300 bg-white">
+                                        <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Upload IRR File (PDF)</label>
+                                    <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-white file:text-green-700 hover:file:bg-green-50"/>
+                                    <p v-if="irrForm.errors.file" class="text-red-500 text-xs mt-1">{{ irrForm.errors.file }}</p>
+                                </div>
+
+                                <div class="flex justify-end pt-2">
+                                    <button type="submit" class="bg-green-600 px-4 py-2 text-white rounded-lg hover:bg-green-700 shadow-sm text-sm font-medium" :disabled="irrForm.processing">
+                                        {{ irrForm.processing ? 'Uploading...' : 'Save Rule' }}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
                     </div>
                 </div>
             </Transition>
