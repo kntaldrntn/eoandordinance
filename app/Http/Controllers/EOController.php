@@ -14,7 +14,7 @@ class EOController extends Controller
     public function index(Request $request)
     {
         // 1. Fetch the EOs with their relationships for the Table
-        $query = ExecutiveOrder::with(['status', 'departments', 'parentEO', 'implementingRules.leadOffice']);
+        $query = ExecutiveOrder::with(['status', 'departments', 'parentEO', 'implementingRules.leadOffice', 'amendments']);
 
         if ($request->filled('search')) {
             $search = $request->search;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download } from 'lucide-vue-next';
+import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download, AlertCircle } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -22,6 +22,10 @@ const props = defineProps<{
             status_id: number;
             amends_eo_id: number | null;
             parent_e_o: { eo_number: string } | null;
+            amendments?: Array<{ 
+                id: number; 
+                eo_number: string; 
+            }>;
             status: { name: string };
             departments: Array<{ id: number; name: string; pivot: { role: string } }>;
             // NEW: List of IRRs
@@ -216,7 +220,7 @@ const getLeadOffice = (depts: any[]) => {
                     <input v-model="searchTerm" type="text" placeholder="Search EO Number or Title..." class="block w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none" />
                     <button v-if="searchTerm" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
                 </div>
-                <button class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 transition" @click="openAddDialog">
+                <button v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 transition" @click="openAddDialog">
                     <Plus class="h-4 w-4" /> Encode EO
                 </button>
             </div>
@@ -252,9 +256,17 @@ const getLeadOffice = (depts: any[]) => {
                                     <td class="px-6 py-3 font-mono font-medium text-blue-600">{{ eo.eo_number }}</td>
                                     <td class="px-6 py-3">
                                         <div class="line-clamp-2 text-gray-900">{{ eo.title }}</div>
+                                        
                                         <div v-if="eo.parent_e_o" class="mt-1 flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100">
                                             <LinkIcon class="w-3 h-3" />
                                             <span>Amends: {{ eo.parent_e_o.eo_number }}</span>
+                                        </div>
+
+                                        <div v-if="eo.amendments && eo.amendments.length > 0" class="mt-1 flex flex-col gap-1">
+                                            <div v-for="child in eo.amendments" :key="child.id" class="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit border border-red-100 font-medium">
+                                                <AlertCircle class="w-3 h-3" />
+                                                <span>Amended by {{ child.eo_number }}</span>
+                                            </div>
                                         </div>
                                     </td>
                                     <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.date_issued }}</td>
@@ -429,7 +441,7 @@ const getLeadOffice = (depts: any[]) => {
                                 </div>
                             </div>
                             <div v-else class="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                <p class="text-sm text-gray-500">No Implementing Rules encoded yet.</p>
+                                <p class="text-sm text-gray-500">No Implementing Rules and Regulations encoded yet.</p>
                             </div>
                         </div>
 
