@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { 
     Search, 
     FileText, 
     Calendar, 
     Download, 
     Building2, 
-    BookOpen, 
     Paperclip,
-    AlertCircle
+    AlertCircle,
+    Link as LinkIcon,
+    Info,
+    Clock
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
@@ -20,8 +22,15 @@ const props = defineProps<{
             eo_number: string;
             title: string;
             date_issued: string;
+            effectivity_date: string | null;
             file_url: string;
             status: { name: string };
+            // NEW FIELDS
+            relationship_type?: string;
+            remarks?: string;
+            // Relations
+            parent_e_o?: { eo_number: string };
+            amendments?: Array<{ id: number; eo_number: string }>;
             implementing_rules?: Array<{
                 id: number;
                 file_url: string;
@@ -29,7 +38,6 @@ const props = defineProps<{
                 lead_office?: { name: string };
             }>;
             departments: Array<{ name: string; pivot: { role: string } }>;
-            parent_e_o?: { eo_number: string };
         }>;
         links: Array<any>;
     };
@@ -57,6 +65,16 @@ const getLeadOffice = (depts: any[]) => {
     const lead = depts.find(d => d.pivot.role === 'lead');
     return lead ? lead.name : 'City Mayor\'s Office';
 };
+
+// Helper for status colors
+const getStatusColor = (statusName: string) => {
+    switch(statusName) {
+        case 'Active': return 'bg-green-100 text-green-700 border-green-200';
+        case 'Amended': return 'bg-orange-100 text-orange-700 border-orange-200';
+        case 'Repealed': return 'bg-red-100 text-red-700 border-red-200';
+        default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+};
 </script>
 
 <template>
@@ -75,7 +93,6 @@ const getLeadOffice = (depts: any[]) => {
                         <p class="text-xs text-gray-500 font-medium tracking-wide mt-0.5">PUBLIC RECORDS PORTAL</p>
                     </div>
                 </div>
-
                 <Link href="/login" class="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors">
                     Staff Login &rarr;
                 </Link>
@@ -97,7 +114,6 @@ const getLeadOffice = (depts: any[]) => {
                                 class="w-full pl-12 pr-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
                             />
                         </div>
-                        
                         <div class="w-full md:w-48">
                             <select 
                                 v-model="year" 
@@ -116,85 +132,103 @@ const getLeadOffice = (depts: any[]) => {
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             
             <div v-if="eos.data.length > 0" class="grid gap-6">
-                <div v-for="eo in eos.data" :key="eo.id" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all p-6">
-                    <div class="flex flex-col md:flex-row md:items-start gap-6">
-                        
-                        <div class="hidden md:block">
-                            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                                <BookOpen class="w-6 h-6" />
-                            </div>
-                        </div>
+                <div v-for="eo in eos.data" :key="eo.id" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-6 relative overflow-hidden">
+                    
+                    <div class="absolute left-0 top-0 bottom-0 w-1.5" 
+                        :class="{
+                            'bg-green-500': eo.status.name === 'Active',
+                            'bg-orange-400': eo.status.name === 'Amended',
+                            'bg-red-500': eo.status.name === 'Repealed',
+                            'bg-gray-300': !['Active','Amended','Repealed'].includes(eo.status.name)
+                        }">
+                    </div>
 
+                    <div class="flex flex-col md:flex-row md:items-start gap-6 pl-2">
+                        
                         <div class="flex-1">
-                            <div class="flex items-center gap-3 mb-2">
+                            <div class="flex flex-wrap items-center gap-3 mb-3">
                                 <span class="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-gray-200">
                                     {{ eo.eo_number }}
                                 </span>
-                                <span v-if="eo.status.name === 'Active'" class="text-xs font-medium text-green-600 flex items-center gap-1">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Active
-                                </span>
-                                <span v-else class="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                
+                                <span :class="['px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border', getStatusColor(eo.status.name)]">
                                     {{ eo.status.name }}
+                                </span>
+
+                                <span class="text-xs text-gray-400 flex items-center gap-1">
+                                    <Calendar class="w-3.5 h-3.5" /> {{ formatDate(eo.date_issued) }}
+                                </span>
+                                <span v-if="eo.effectivity_date" class="text-xs text-gray-500 flex items-center gap-1 bg-gray-50 px-2 py-0.5 rounded border border-gray-100" title="Effectivity Date">
+                                    <Clock class="w-3.5 h-3.5 text-gray-400" /> 
+                                    <span>Eff: {{ formatDate(eo.effectivity_date) }}</span>
                                 </span>
                             </div>
 
-                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-2">
+                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-3 leading-snug">
                                 {{ eo.title }}
                             </h3>
 
-                            <div class="flex flex-wrap items-center gap-y-2 gap-x-6 text-sm text-gray-500">
-                                <div class="flex items-center gap-1.5">
-                                    <Calendar class="w-4 h-4" />
-                                    {{ formatDate(eo.date_issued) }}
-                                </div>
-                                <div class="flex items-center gap-1.5">
-                                    <Building2 class="w-4 h-4" />
-                                    {{ getLeadOffice(eo.departments) }}
-                                </div>
-                                <div v-if="eo.parent_e_o" class="text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-xs font-medium border border-red-100 flex items-center gap-1">
-                                    <Paperclip class="w-3 h-3" /> <span>Amends {{ eo.parent_e_o.eo_number }}</span>
+                            <div class="space-y-2 mb-4">
+                                
+                                <div v-if="eo.parent_e_o" class="text-sm flex items-start gap-2 bg-blue-50 p-2.5 rounded-lg border border-blue-100 text-blue-800">
+                                    <LinkIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-xs uppercase tracking-wide text-blue-600 mb-0.5">
+                                            Relationship
+                                        </p>
+                                        <p>
+                                            <span class="font-bold">{{ eo.relationship_type || 'Amends' }}:</span> 
+                                            {{ eo.parent_e_o.eo_number }}
+                                        </p>
+                                        <p v-if="eo.remarks" class="mt-1 text-xs text-blue-700 italic border-l-2 border-blue-200 pl-2">
+                                            "{{ eo.remarks }}"
+                                        </p>
+                                    </div>
                                 </div>
 
-                                <div v-if="eo.amendments && eo.amendments.length > 0" class="flex flex-col gap-1">
-                                    <div v-for="child in eo.amendments" :key="child.id" class="text-red-600 bg-red-50 px-2 py-0.5 rounded text-xs font-medium border border-red-100 flex items-center gap-1">
-                                        <AlertCircle class="w-3 h-3" /> <span>Amended by {{ child.eo_number }}</span>
+                                <div v-if="eo.amendments && eo.amendments.length > 0" class="text-sm flex items-start gap-2 bg-orange-50 p-2.5 rounded-lg border border-orange-100 text-orange-900">
+                                    <AlertCircle class="w-4 h-4 mt-0.5 shrink-0 text-orange-500" />
+                                    <div>
+                                        <p class="font-semibold text-xs uppercase tracking-wide text-orange-600 mb-0.5">
+                                            Update Notice
+                                        </p>
+                                        <p class="text-sm">
+                                            This order has been amended/repealed by:
+                                            <span v-for="(child, idx) in eo.amendments" :key="child.id" class="font-mono font-medium">
+                                                {{ child.eo_number }}<span v-if="idx < eo.amendments.length - 1">, </span>
+                                            </span>
+                                        </p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div v-if="eo.implementing_rules && eo.implementing_rules.length > 0" class="mt-4 pt-3 border-t border-gray-100">
-                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Rules and Regulations (IRR)</p>
-                                <div class="space-y-2">
-                                    <a 
-                                        v-for="irr in eo.implementing_rules" 
-                                        :key="irr.id" 
-                                        :href="irr.file_url"
-                                        target="_blank" 
-                                        class="group/irr flex items-center gap-2 text-sm text-gray-600 hover:text-blue-700 transition-colors w-fit"
-                                    >
-                                        <div class="bg-gray-100 p-1 rounded group-hover/irr:bg-blue-50">
-                                            <Paperclip class="w-3.5 h-3.5" />
-                                        </div>
-                                        <span class="font-medium underline decoration-gray-300 underline-offset-2 group-hover/irr:decoration-blue-300">
-                                            Download IRR
-                                        </span>
-                                        <span class="text-xs text-gray-400 no-underline border-l pl-2 ml-1">
-                                            {{ irr.status }} <span v-if="irr.lead_office">({{ irr.lead_office.name }})</span>
-                                        </span>
-                                    </a>
+                            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500 mt-2">
+                                <div class="flex items-center gap-1.5">
+                                    <Building2 class="w-4 h-4" />
+                                    {{ getLeadOffice(eo.departments) }}
                                 </div>
+                                <div v-if="eo.implementing_rules && eo.implementing_rules.length > 0" class="flex items-center gap-1.5 text-blue-600 font-medium">
+                                    <Paperclip class="w-4 h-4" />
+                                    {{ eo.implementing_rules.length }} IRR Attached
+                                </div>
+                            </div>
+
+                            <div v-if="eo.implementing_rules && eo.implementing_rules.length > 0" class="mt-3 pl-4 border-l-2 border-gray-100">
+                                <a v-for="irr in eo.implementing_rules" :key="irr.id" :href="irr.file_url" target="_blank" class="block text-xs text-gray-500 hover:text-blue-600 hover:underline py-0.5">
+                                    Download IRR: {{ irr.status }}
+                                </a>
                             </div>
 
                         </div>
 
-                        <div class="mt-4 md:mt-0 md:self-center">
+                        <div class="mt-4 md:mt-0 md:self-start">
                             <a 
                                 :href="eo.file_url" 
                                 target="_blank"
-                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-all w-full md:w-auto justify-center"
+                                class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
                             >
                                 <Download class="w-4 h-4" />
-                                Download PDF
+                                <span class="hidden md:inline">PDF</span>
                             </a>
                         </div>
                     </div>

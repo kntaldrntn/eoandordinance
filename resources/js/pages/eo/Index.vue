@@ -21,6 +21,8 @@ const props = defineProps<{
             legal_basis: string;
             status_id: number;
             amends_eo_id: number | null;
+            relationship_type: string | null; // Added
+            remarks: string | null;           // Added
             parent_e_o: { eo_number: string } | null;
             amendments?: Array<{ 
                 id: number; 
@@ -28,7 +30,6 @@ const props = defineProps<{
             }>;
             status: { name: string };
             departments: Array<{ id: number; name: string; pivot: { role: string } }>;
-            // NEW: List of IRRs
             implementing_rules: Array<{
                 id: number;
                 status: string;
@@ -96,6 +97,8 @@ const editingId = ref<number | null>(null);
 
 const form = useForm({
     amends_eo_id: '' as string | number,
+    relationship_type: 'Amends', // Default
+    remarks: '',
     eo_number: '',
     title: '',
     date_issued: '',
@@ -109,12 +112,12 @@ const form = useForm({
 
 // --- IRR MODAL STATE ---
 const showIRRDialog = ref(false);
-const selectedEO = ref<any>(null); // To store which EO we are managing
+const selectedEO = ref<any>(null);
 
 const irrForm = useForm({
     executive_order_id: '' as string | number,
     lead_office_id: '' as string | number,
-    status: 'Drafting', // Default
+    status: 'Drafting', 
     file: null as File | null,
 });
 
@@ -126,6 +129,7 @@ function openAddDialog() {
     editingId.value = null;
     form.reset();
     form.clearErrors();
+    form.relationship_type = 'Amends'; // Reset default
     showDialog.value = true;
 }
 
@@ -133,14 +137,19 @@ function openEditDialog(eo: any) {
     isEdit.value = true;
     editingId.value = eo.id;
     form.clearErrors();
+    
     form.eo_number = eo.eo_number;
     form.title = eo.title;
     form.date_issued = eo.date_issued;
     form.effectivity_date = eo.effectivity_date;
     form.legal_basis = eo.legal_basis || '';
     form.status_id = eo.status_id;
-    form.amends_eo_id = eo.amends_eo_id || '';
     
+    // Load Relationship Data
+    form.amends_eo_id = eo.amends_eo_id || '';
+    form.relationship_type = eo.relationship_type || 'Amends'; 
+    form.remarks = eo.remarks || '';
+
     const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
     form.support_office_ids = eo.departments.filter((d: any) => d.pivot.role === 'support').map((d: any) => d.id);
@@ -153,11 +162,9 @@ function openIRRDialog(eo: any) {
     selectedEO.value = eo;
     irrForm.reset();
     irrForm.clearErrors();
-    // Pre-fill: Assume the IRR is led by the same office as the EO (User can change)
     const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
     irrForm.lead_office_id = lead ? lead.id : '';
     irrForm.executive_order_id = eo.id;
-    
     showIRRDialog.value = true;
 }
 
@@ -172,11 +179,6 @@ function submitIRR() {
     irrForm.post(route('irr.store'), {
         onSuccess: () => {
             irrForm.reset();
-            // We keep the modal open so they can see the new list, 
-            // but we need to refresh the selectedEO data to show the new file.
-            // Since Inertia refreshes props automatically, we just update selectedEO from the fresh props
-            // A simple trick: close and reopen, or just rely on the list updating if we passed props correctly.
-            // For now, let's just show success and close.
             showIRRDialog.value = false;
             notyf.success('IRR Added Successfully');
         },
@@ -233,6 +235,7 @@ const getLeadOffice = (depts: any[]) => {
                                 <th class="px-6 py-3 font-medium">EO Number</th>
                                 <th class="px-6 py-3 font-medium w-1/3">Title</th>
                                 <th class="px-6 py-3 font-medium">Date Issued</th>
+                                <th class="px-6 py-3 font-medium">Effectivity Date</th>
                                 <th class="px-6 py-3 font-medium">Lead Office</th>
                                 <th class="px-6 py-3 font-medium">Status</th>
                                 <th class="px-6 py-3 text-center font-medium">Action</th>
@@ -255,7 +258,7 @@ const getLeadOffice = (depts: any[]) => {
                                 <tr v-for="eo in eos.data" :key="eo.id" class="hover:bg-gray-50 transition-colors">
                                     <td class="px-6 py-3 font-mono font-medium text-blue-600">{{ eo.eo_number }}</td>
                                     <td class="px-6 py-3">
-                                        <div class="line-clamp-2 text-gray-900">{{ eo.title }}</div>
+                                        <div class="line-clamp-2 text-gray-900 font-medium">{{ eo.title }}</div>
                                         
                                         <div v-if="eo.parent_e_o" class="mt-1 flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100">
                                             <LinkIcon class="w-3 h-3" />
@@ -268,8 +271,14 @@ const getLeadOffice = (depts: any[]) => {
                                                 <span>Amended by {{ child.eo_number }}</span>
                                             </div>
                                         </div>
+
+                                        <div v-if="eo.remarks" class="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 italic">
+                                            <span class="font-semibold not-italic text-gray-600">Note:</span> {{ eo.remarks }}
+                                        </div>
+
                                     </td>
                                     <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.date_issued }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.effectivity_date }}</td>
                                     <td class="px-6 py-3 text-xs text-gray-600">
                                         <span class="flex items-center gap-1">
                                             <Building2 class="w-3 h-3 text-gray-400" />
@@ -353,14 +362,35 @@ const getLeadOffice = (depts: any[]) => {
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">Title</label>
                                     <textarea v-model="form.title" rows="2" class="w-full rounded-lg border-gray-300"></textarea>
                                 </div>
-                                <div class="col-span-1 md:col-span-2">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Amends existing EO?</label>
-                                    <select v-model="form.amends_eo_id" class="w-full rounded-lg border-gray-300">
-                                        <option value="">No (Parent)</option>
-                                        <option v-for="ex in existing_eos" :key="ex.id" :value="ex.id">{{ ex.eo_number }} - {{ ex.title }}</option>
-                                    </select>
+                                
+                                <div class="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div class="col-span-1">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Target EO (Parent)</label>
+                                        <select v-model="form.amends_eo_id" class="w-full rounded-lg border-gray-300 focus:ring-blue-500">
+                                            <option value="">None (This is a new Parent)</option>
+                                            <option v-for="ex in existing_eos" :key="ex.id" :value="ex.id">
+                                                {{ ex.eo_number }} - {{ ex.title }}
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div v-if="form.amends_eo_id" class="col-span-1">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Action / Effect</label>
+                                        <select v-model="form.relationship_type" class="w-full rounded-lg border-gray-300 font-medium text-blue-900 bg-blue-50 border-blue-200">
+                                            <option value="Amends">Amends (Changes Status to Amended)</option>
+                                            <option value="Repeals">Repeals (Changes Status to Repealed)</option>
+                                            <option value="Supplements">Supplements (Keeps Status Active)</option>
+                                        </select>
+                                        <div v-if="form.errors.relationship_type" class="text-red-500 text-xs mt-1">{{ form.errors.relationship_type }}</div>
+                                    </div>
+
+                                    <div class="col-span-1 md:col-span-2">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Remarks</label>
+                                        <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border-gray-300 placeholder-gray-400 text-sm" placeholder="Add specific details about the amendment, repeal, or supplement..."></textarea>
+                                        <div v-if="form.errors.remarks" class="text-red-500 text-xs mt-1">{{ form.errors.remarks }}</div>
+                                    </div>
                                 </div>
-                            </div>
+                                </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6">
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">Date Issued</label>

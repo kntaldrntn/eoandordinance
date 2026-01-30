@@ -45,10 +45,6 @@ class EOController extends Controller
         ]);
     }
 
-    public function create()
-    {
-    }
-
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -63,15 +59,45 @@ class EOController extends Controller
             'support_office_ids.*' => 'exists:departments,id',
             'status_id' => 'required|exists:statuses,id',
             'file' => 'required|file|mimes:pdf|max:10240',
+            // NEW VALIDATIONS
+            'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
+            'remarks' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($request, $validated) {
-            // 1. Handle File Upload
+
+            // 1. AUTOMATION: Update Parent Status Logic
+            if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
+                
+                $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
+                $action = $validated['relationship_type'];
+
+                if ($parentEO) {
+                    if ($action === 'Amends') {
+                        $statusId = DB::table('statuses')->where('name', 'Amended')->value('id'); 
+                        $parentEO->update(['status_id' => $statusId]);
+                    } 
+                    elseif ($action === 'Repeals') {
+                        $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id'); 
+                        $parentEO->update(['status_id' => $statusId]);
+                    }
+                    elseif ($action === 'Supplements') {
+                        $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
+                        if ($parentEO->status_id != $activeId) {
+                             $parentEO->update(['status_id' => $activeId]);
+                        }
+                    }
+                }
+            }
+
+            // 2. Handle File Upload
             $path = $request->file('file')->store('eos', 'public');
 
-            // 2. Create the EO Record
+            // 3. Create the EO Record
             $eo = ExecutiveOrder::create([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
+                'relationship_type' => $validated['relationship_type'] ?? null, // SAVE THIS
+                'remarks' => $validated['remarks'] ?? null,                     // SAVE THIS
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
                 'date_issued' => $validated['date_issued'],
@@ -82,17 +108,12 @@ class EOController extends Controller
                 'file_path' => $path,
             ]);
 
-            // 3. Attach Departments (The Pivot Logic)
-            
-            // Attach Lead Office (Role = lead)
+            // 4. Attach Departments
             $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
 
-            // Attach Support Offices (Role = support)
             if (!empty($validated['support_office_ids'])) {
-                // We map them to ensure every ID gets the 'support' role
                 $supportData = [];
                 foreach ($validated['support_office_ids'] as $id) {
-                    // Prevent attaching the same office as Lead AND Support
                     if ($id != $validated['lead_office_id']) {
                         $supportData[$id] = ['role' => 'support'];
                     }
@@ -103,6 +124,7 @@ class EOController extends Controller
 
         return redirect()->back()->with('success', 'Executive Order encoded successfully.');
     }
+
     public function update(Request $request, ExecutiveOrder $eo)
     {
         $validated = $request->validate([
@@ -115,11 +137,38 @@ class EOController extends Controller
             'lead_office_id' => 'required|exists:departments,id',
             'support_office_ids' => 'nullable|array',
             'status_id' => 'required|exists:statuses,id',
-            'file' => 'nullable|file|mimes:pdf|max:10240', 
+            'file' => 'nullable|file|mimes:pdf|max:10240',
+            // NEW VALIDATIONS FOR UPDATE
+            'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
+            'remarks' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($request, $validated, $eo) {
-            // Handle File Upload
+            
+            // 1. AUTOMATION: Update Parent Status on Edit
+            // Only run if relationship info is present
+            if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
+                
+                // Logic: If the user changed the parent OR the relationship type, trigger the update on the (new) parent
+                if ($eo->amends_eo_id != $validated['amends_eo_id'] || $eo->relationship_type != $validated['relationship_type']) {
+                    
+                    $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
+                    $action = $validated['relationship_type'];
+
+                    if ($parentEO) {
+                        if ($action === 'Amends') {
+                            $statusId = DB::table('statuses')->where('name', 'Amended')->value('id');
+                            $parentEO->update(['status_id' => $statusId]);
+                        } 
+                        elseif ($action === 'Repeals') {
+                            $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id');
+                            $parentEO->update(['status_id' => $statusId]);
+                        }
+                    }
+                }
+            }
+
+            // 2. Handle File Upload
             if ($request->hasFile('file')) {
                 if ($eo->file_path && Storage::disk('public')->exists($eo->file_path)) {
                     Storage::disk('public')->delete($eo->file_path);
@@ -127,21 +176,21 @@ class EOController extends Controller
                 $eo->file_path = $request->file('file')->store('eos', 'public');
             }
 
-            // 2. FIX: Save the 'amends_eo_id' here
+            // 3. Update EO Record
             $eo->update([
-                'amends_eo_id' => $validated['amends_eo_id'] ?? null, // <--- Add this line!
+                'amends_eo_id' => $validated['amends_eo_id'] ?? null,
+                'relationship_type' => $validated['relationship_type'] ?? null, // UPDATE THIS
+                'remarks' => $validated['remarks'] ?? null,                     // UPDATE THIS
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'status_id' => $validated['status_id'],
-                // file_path is handled above or stays distinct
             ]);
 
-            // Sync Departments
+            // 4. Sync Departments
             $eo->departments()->detach();
-
             $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
 
             if (!empty($validated['support_office_ids'])) {
