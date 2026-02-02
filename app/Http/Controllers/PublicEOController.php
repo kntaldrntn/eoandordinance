@@ -15,7 +15,9 @@ class PublicEOController extends Controller
         $query = ExecutiveOrder::with([
             'departments', 
             'status', 
-            'implementingRules', 
+            'implementingRules' => function($q) {
+                $q->whereIn('status', ['Approved', 'Implemented']); 
+            },
             'parentEO', 
             'amendments'
         ])
