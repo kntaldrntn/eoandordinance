@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EOController;
 use App\Http\Controllers\IRRController;
+use App\Http\Controllers\OrdinanceController;
 use App\Http\Controllers\PublicEOController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\UserController;
@@ -26,6 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     Route::resource('eo', EOController::class);
     Route::resource('irr', IRRController::class);
+    Route::resource('ordinances', OrdinanceController::class);
 });
 
 require __DIR__.'/settings.php';

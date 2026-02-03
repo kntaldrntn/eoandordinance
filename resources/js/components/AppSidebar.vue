@@ -52,7 +52,7 @@ const mainNavItems = computed(() => {
         },
         {
             title: 'Ordinances',
-            href: '#',
+            href: route('ordinance.index'),
             icon: ScrollText,
             roles: ['system_admin', 'supervisor', 'read_only']
         },
