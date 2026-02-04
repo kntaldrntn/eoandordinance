@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExecutiveOrder;
-use App\Models\Department;
+use App\Models\Ordinance; 
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -11,41 +11,75 @@ class PublicEOController extends Controller
 {
     public function index(Request $request)
     {
-        // Added 'amendments' and 'parentEO.status' to ensure we have all data for the warnings
-        $query = ExecutiveOrder::with([
-            'departments', 
-            'status', 
-            'implementingRules' => function($q) {
-                $q->whereIn('status', ['Approved', 'Implemented']); 
-            },
-            'parentEO', 
-            'amendments'
-        ])
-        // Only show finalized statuses (Optional: customize as needed)
-        ->whereHas('status', function($q) {
+        // 1. Get the current tab (Default to 'eo')
+        $type = $request->input('type', 'eo'); 
+        $search = $request->search;
+        $year = $request->year;
+
+        // 2. Select the Data Source based on the Tab
+        if ($type === 'ordinance') {
+            // --- ORDINANCE LOGIC ---
+            $query = Ordinance::with([
+                'status', 
+                'departments',                  
+                'implementingRules.leadOffice', 
+                'parentOrdinance', 
+                'amendments'
+            ]);
+            
+            if ($search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('ordinance_number', 'LIKE', "%{$search}%")
+                      ->orWhere('title', 'LIKE', "%{$search}%");
+                });
+            }
+            
+            if ($year) {
+                $query->whereYear('date_enacted', $year);
+            }
+            
+            $query->orderBy('date_enacted', 'desc');
+
+        } else {
+            // --- EXECUTIVE ORDER LOGIC ---
+            $query = ExecutiveOrder::with([
+                'status', 
+                'departments', 
+                'implementingRules.leadOffice', 
+                'parentEO', 
+                'amendments'
+            ]);
+
+            if ($search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('eo_number', 'LIKE', "%{$search}%")
+                      ->orWhere('title', 'LIKE', "%{$search}%");
+                });
+            }
+
+            if ($year) {
+                $query->whereYear('date_issued', $year);
+            }
+            
+            $query->orderBy('date_issued', 'desc');
+        }
+
+        
+        $query->whereHas('status', function($q) {
             $q->where('name', '!=', 'Draft');
-        })
-        ->orderBy('date_issued', 'desc');
+        });
 
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('eo_number', 'LIKE', "%{$search}%")
-                  ->orWhere('title', 'LIKE', "%{$search}%");
-            });
-        }
+       
+        $years = $type === 'ordinance' 
+            ? Ordinance::selectRaw('YEAR(date_enacted) as year')->distinct()->orderBy('year', 'desc')->pluck('year')
+            : ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct()->orderBy('year', 'desc')->pluck('year');
 
-        if ($request->filled('year')) {
-            $query->whereYear('date_issued', $request->year);
-        }
-
+        
         return Inertia::render('public/Home', [
-            'eos' => $query->paginate(12)->withQueryString(),
-            'filters' => $request->only(['search', 'year']),
-            'years' => ExecutiveOrder::selectRaw('YEAR(date_issued) as year')
-                ->distinct()
-                ->orderBy('year', 'desc')
-                ->pluck('year'),
+            'records' => $query->paginate(12)->withQueryString(), // 
+            'filters' => $request->only(['search', 'year', 'type']),
+            'years' => $years,
+            'activeType' => $type, 
         ]);
     }
 }
