@@ -37,4 +37,9 @@ class Ordinance extends Model
     {
         return $this->hasMany(Ordinance::class, 'amends_ordinance_id');
     }
+    public function implementingRules()
+    {
+        return $this->hasMany(ImplementingRuleandRegulation::class, 'ordinance_id');
+    }
+    
 }

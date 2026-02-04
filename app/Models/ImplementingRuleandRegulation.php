@@ -28,4 +28,8 @@ class ImplementingRuleandRegulation extends Model
     {
         return $this->belongsTo(Department::class, 'lead_office_id');
     }
+    public function ordinance()
+    {
+        return $this->belongsTo(Ordinance::class, 'ordinance_id');
+    }
 }
