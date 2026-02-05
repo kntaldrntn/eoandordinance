@@ -11,18 +11,22 @@ class PublicEOController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Get the current tab (Default to 'eo')
         $type = $request->input('type', 'eo'); 
         $search = $request->search;
         $year = $request->year;
 
-        // 2. Select the Data Source based on the Tab
+        // Common function to filter IRRs (Restored Logic)
+        $irrFilter = function($q) {
+            $q->whereIn('status', ['Approved', 'Implemented'])
+              ->with('leadOffice'); // Load the nested relationship here
+        };
+
         if ($type === 'ordinance') {
             // --- ORDINANCE LOGIC ---
             $query = Ordinance::with([
                 'status', 
                 'departments',                  
-                'implementingRules.leadOffice', 
+                'implementingRules' => $irrFilter, // <--- APPLIED HERE
                 'parentOrdinance', 
                 'amendments'
             ]);
@@ -45,7 +49,7 @@ class PublicEOController extends Controller
             $query = ExecutiveOrder::with([
                 'status', 
                 'departments', 
-                'implementingRules.leadOffice', 
+                'implementingRules' => $irrFilter, // <--- APPLIED HERE
                 'parentEO', 
                 'amendments'
             ]);
@@ -64,22 +68,28 @@ class PublicEOController extends Controller
             $query->orderBy('date_issued', 'desc');
         }
 
-        
+        // Filter: Only show finalized EOs/Ordinances
         $query->whereHas('status', function($q) {
             $q->where('name', '!=', 'Draft');
         });
 
-       
+        // 3. Stats for the Dashboard
+        $stats = [
+            'total_eos' => ExecutiveOrder::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
+            'total_ordinances' => Ordinance::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
+            'latest_date' => now()->format('F d, Y'),
+        ];
+
         $years = $type === 'ordinance' 
             ? Ordinance::selectRaw('YEAR(date_enacted) as year')->distinct()->orderBy('year', 'desc')->pluck('year')
             : ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct()->orderBy('year', 'desc')->pluck('year');
 
-        
         return Inertia::render('public/Home', [
-            'records' => $query->paginate(12)->withQueryString(), // 
+            'records' => $query->paginate(12)->withQueryString(),
             'filters' => $request->only(['search', 'year', 'type']),
             'years' => $years,
             'activeType' => $type, 
+            'stats' => $stats,
         ]);
     }
 }

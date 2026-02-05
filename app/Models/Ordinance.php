@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class Ordinance extends Model
 {
+    use RecordsActivity;
     protected $guarded = [];
 
     protected $appends = ['file_url'];

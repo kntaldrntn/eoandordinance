@@ -13,7 +13,15 @@ class OrdinanceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Ordinance::with(['status', 'departments', 'parentOrdinance', 'amendments', 'implementingRules.leadOffice']);
+        // Added 'audits.user' to eager load the history and the user who made changes
+        $query = Ordinance::with([
+            'status', 
+            'departments', 
+            'parentOrdinance', 
+            'amendments', 
+            'implementingRules.leadOffice', 
+            'audits.user' // <--- CRITICAL ADDITION FOR HISTORY
+        ]);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -47,7 +55,7 @@ class OrdinanceController extends Controller
             'attested_by' => 'nullable|string',
             'approved_by' => 'nullable|string',
             'status_id' => 'required|exists:statuses,id',
-            'file' => 'required|file|mimes:pdf|max:20480', // 20MB limit
+            'file' => 'required|file|mimes:pdf|max:20480',
             
             // Logic Fields
             'amends_ordinance_id' => 'nullable|exists:ordinances,id',
@@ -108,7 +116,6 @@ class OrdinanceController extends Controller
             // Implementing
             if (!empty($validated['implementing_department_ids'])) {
                 foreach ($validated['implementing_department_ids'] as $id) {
-                    // Avoid duplicates if same office is both
                     if (!isset($syncData[$id])) {
                         $syncData[$id] = ['role' => 'implementing'];
                     }
@@ -120,6 +127,7 @@ class OrdinanceController extends Controller
 
         return redirect()->back()->with('success', 'Ordinance encoded successfully.');
     }
+
     public function update(Request $request, Ordinance $ordinance)
     {
         $validated = $request->validate([
@@ -152,10 +160,9 @@ class OrdinanceController extends Controller
 
         DB::transaction(function () use ($request, $validated, $ordinance) {
             
-            // 1. AUTOMATION: Update Parent Status Logic (Only if changed)
+            // 1. AUTOMATION: Update Parent Status Logic
             if (!empty($validated['amends_ordinance_id']) && !empty($validated['relationship_type'])) {
                 
-                // Check if relationship changed to avoid unnecessary queries
                 if ($ordinance->amends_ordinance_id != $validated['amends_ordinance_id'] || 
                     $ordinance->relationship_type != $validated['relationship_type']) {
                     
@@ -176,7 +183,6 @@ class OrdinanceController extends Controller
 
             // 2. Handle File Upload
             if ($request->hasFile('file')) {
-                // Delete old file if exists
                 if ($ordinance->file_path && Storage::disk('public')->exists($ordinance->file_path)) {
                     Storage::disk('public')->delete($ordinance->file_path);
                 }
@@ -199,16 +205,14 @@ class OrdinanceController extends Controller
                 'remarks' => $validated['remarks'] ?? null,
             ]);
 
-            // 4. Sync Offices (Sponsors & Implementing)
+            // 4. Sync Offices
             $syncData = [];
             
-            // Sponsors
             if (!empty($validated['sponsor_department_ids'])) {
                 foreach ($validated['sponsor_department_ids'] as $id) {
                     $syncData[$id] = ['role' => 'sponsor'];
                 }
             }
-            // Implementing
             if (!empty($validated['implementing_department_ids'])) {
                 foreach ($validated['implementing_department_ids'] as $id) {
                     if (!isset($syncData[$id])) {

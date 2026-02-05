@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download, AlertCircle, UserCheck } from 'lucide-vue-next';
+import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download, AlertCircle, UserCheck, Clock } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -20,6 +20,16 @@ const props = defineProps<{
             file_url: string;
             attested_by: string | null;
             approved_by: string | null;
+
+            // Audit History (ADDED)
+            audits: Array<{
+                id: number;
+                user: { name: string };
+                action: string;
+                created_at: string;
+                old_values: any;
+                new_values: any;
+            }>;
             
             // Relationships
             status: { name: string };
@@ -96,6 +106,8 @@ watch(() => props.flash, (flash) => {
 const showDialog = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
+const activeModalTab = ref('details'); // 'details' or 'history'
+const selectedRecord = ref<any>(null); // For history view
 
 const form = useForm({
     ordinance_number: '',
@@ -119,12 +131,12 @@ const form = useForm({
     file: null as File | null,
 });
 
-// --- IRR MODAL STATE (ADDED) ---
+// --- IRR MODAL STATE ---
 const showIRRDialog = ref(false);
-const selectedOrd = ref<any>(null); // Renamed from selectedEO for clarity
+const selectedOrd = ref<any>(null);
 
 const irrForm = useForm({
-    ordinance_id: '' as string | number, // <--- IMPORTANT: Using ordinance_id
+    ordinance_id: '' as string | number,
     lead_office_id: '' as string | number,
     status: 'Drafting', 
     file: null as File | null,
@@ -136,6 +148,9 @@ const irrStatuses = ['Drafting', 'Pending Approval', 'Approved', 'Implemented', 
 function openAddDialog() {
     isEdit.value = false;
     editingId.value = null;
+    selectedRecord.value = null;
+    activeModalTab.value = 'details';
+    
     form.reset();
     form.clearErrors();
     form.relationship_type = 'Amends';
@@ -145,6 +160,9 @@ function openAddDialog() {
 function openEditDialog(ord: any) {
     isEdit.value = true;
     editingId.value = ord.id;
+    selectedRecord.value = ord; // Save for history view
+    activeModalTab.value = 'details'; // Always start on details
+    
     form.clearErrors();
     
     // Basic Info
@@ -194,17 +212,56 @@ function submitForm() {
     }
 }
 
-// --- Functions: IRR Management (ADDED) ---
+// --- History Helpers ---
+const formatAuditDate = (date: string) => {
+    return new Date(date).toLocaleString('en-US', { 
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+    });
+};
+
+const getChangedFields = (audit: any) => {
+    if (audit.action === 'Created') return 'Initial Record Created';
+    if (audit.action === 'Deleted') return 'Record Deleted';
+    
+    let newVals = audit.new_values;
+    let oldVals = audit.old_values;
+
+    // 1. Safety Check: Decode strings if necessary
+    if (typeof newVals === 'string') {
+        try { newVals = JSON.parse(newVals); } catch (e) { return 'Updated details'; }
+    }
+    if (typeof oldVals === 'string') {
+        try { oldVals = JSON.parse(oldVals); } catch (e) { oldVals = {}; }
+    }
+    
+    // 2. Build the "From -> To" string
+    if (newVals) {
+        const changes = Object.keys(newVals)
+            .filter(key => key !== 'updated_at') // Skip timestamp updates
+            .map(key => {
+                const fieldName = key.replace(/_/g, ' '); 
+                const from = oldVals && oldVals[key] ? oldVals[key] : '(empty)';
+                const to = newVals[key] ? newVals[key] : '(empty)';
+                
+                return `${fieldName}: "${from}" → "${to}"`;
+            });
+            
+        if (changes.length === 0) return 'Updated metadata';
+        return 'Updated: ' + changes.join(', ');
+    }
+    return 'Updated record';
+};
+
+// --- Functions: IRR Management ---
 function openIRRDialog(ord: any) {
     selectedOrd.value = ord;
     irrForm.reset();
     irrForm.clearErrors();
     
-    // Auto-select implementing office if available
     const imp = ord.departments.find((d: any) => d.pivot.role === 'implementing');
     irrForm.lead_office_id = imp ? imp.id : '';
     
-    irrForm.ordinance_id = ord.id; // Set ID
+    irrForm.ordinance_id = ord.id;
     showIRRDialog.value = true;
 }
 
@@ -281,12 +338,10 @@ const getSponsors = (depts: any[]) => {
                                     <td class="px-6 py-3 font-mono font-medium text-indigo-600">{{ ord.ordinance_number }}</td>
                                     <td class="px-6 py-3">
                                         <div class="line-clamp-2 text-gray-900 font-medium">{{ ord.title }}</div>
-                                        
                                         <div v-if="ord.parent_ordinance" class="mt-1 flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100">
                                             <LinkIcon class="w-3 h-3" />
                                             <span>Amends: {{ ord.parent_ordinance.ordinance_number }}</span>
                                         </div>
-                                        
                                         <div v-if="ord.remarks" class="mt-2 text-xs text-gray-500 italic bg-gray-50 p-1.5 rounded border border-gray-100">
                                             <span class="font-semibold not-italic">Note:</span> {{ ord.remarks }}
                                         </div>
@@ -313,9 +368,7 @@ const getSponsors = (depts: any[]) => {
                                                 <BookOpen class="w-4 h-4" />
                                                 <span v-if="ord.implementing_rules?.length > 0" class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 border border-white"></span>
                                             </button>
-
                                             <span class="text-gray-300">|</span>
-
                                             <a v-if="ord.file_url" :href="ord.file_url" target="_blank" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">View</a>
                                             <span v-else class="text-sm text-gray-400 cursor-not-allowed">—</span>
                                             <span class="text-gray-300">|</span>
@@ -347,7 +400,8 @@ const getSponsors = (depts: any[]) => {
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-3xl rounded-xl bg-white p-6 shadow-xl max-h-[95vh] overflow-y-auto">
-                        <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+                        
+                        <div class="flex items-center justify-between mb-2">
                             <div>
                                 <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <FileText class="w-6 h-6 text-indigo-600" />
@@ -357,105 +411,164 @@ const getSponsors = (depts: any[]) => {
                             </div>
                             <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-full p-2">×</button>
                         </div>
-                        <form @submit.prevent="submitForm" class="space-y-6">
-                            
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Ordinance Number</label>
-                                    <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border-gray-300" />
-                                    <p v-if="form.errors.ordinance_number" class="text-red-500 text-xs mt-1">{{ form.errors.ordinance_number }}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                                    <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
-                                        <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
-                                    </select>
-                                </div>
-                            </div>
 
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Title</label>
-                                <textarea v-model="form.title" rows="2" class="w-full rounded-lg border-gray-300"></textarea>
-                            </div>
+                        <div v-if="isEdit" class="flex items-center gap-6 border-b border-gray-200 mb-6">
+                            <button 
+                                @click="activeModalTab = 'details'"
+                                class="pb-3 px-1 text-sm font-bold uppercase tracking-wide border-b-2 transition-all"
+                                :class="activeModalTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            >
+                                Details
+                            </button>
+                            <button 
+                                @click="activeModalTab = 'history'"
+                                class="pb-3 px-1 text-sm font-bold uppercase tracking-wide border-b-2 transition-all"
+                                :class="activeModalTab === 'history' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            >
+                                Audit Log (History)
+                            </button>
+                        </div>
+                        <div v-else class="mb-6 border-b border-gray-200"></div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
-                                <div class="col-span-1">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Target Ordinance (Parent)</label>
-                                    <select v-model="form.amends_ordinance_id" class="w-full rounded-lg border-gray-300 focus:ring-indigo-500">
-                                        <option value="">None (This is a new Parent)</option>
-                                        <option v-for="ex in existing_ordinances" :key="ex.id" :value="ex.id">
-                                            {{ ex.ordinance_number }} - {{ ex.title }}
-                                        </option>
-                                    </select>
+                        <div v-show="activeModalTab === 'details'">
+                            <form @submit.prevent="submitForm" class="space-y-6">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Ordinance Number</label>
+                                        <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border-gray-300" />
+                                        <p v-if="form.errors.ordinance_number" class="text-red-500 text-xs mt-1">{{ form.errors.ordinance_number }}</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                                        <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
+                                            <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div v-if="form.amends_ordinance_id" class="col-span-1">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Action / Effect</label>
-                                    <select v-model="form.relationship_type" class="w-full rounded-lg border-gray-300 font-medium text-indigo-900 bg-indigo-50 border-indigo-200">
-                                        <option value="Amends">Amends (Status -> Amended)</option>
-                                        <option value="Repeals">Repeals (Status -> Repealed)</option>
-                                        <option value="Supersedes">Supersedes</option>
-                                    </select>
-                                </div>
-                                <div class="col-span-1 md:col-span-2">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Remarks</label>
-                                    <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border-gray-300 text-sm" placeholder="Additional notes..."></textarea>
-                                </div>
-                            </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 border-t pt-6">
                                 <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Date Enacted</label>
-                                    <input v-model="form.date_enacted" type="date" class="w-full rounded-lg border-gray-300" />
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                                    <textarea v-model="form.title" rows="2" class="w-full rounded-lg border-gray-300"></textarea>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Date Approved</label>
-                                    <input v-model="form.date_approved" type="date" class="w-full rounded-lg border-gray-300" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Effectivity</label>
-                                    <input v-model="form.effectivity_date" type="date" class="w-full rounded-lg border-gray-300" />
-                                </div>
-                            </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Attested By</label>
-                                    <input v-model="form.attested_by" type="text" placeholder="e.g., SP Secretary" class="w-full rounded-lg border-gray-300" />
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div class="col-span-1">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Target Ordinance (Parent)</label>
+                                        <select v-model="form.amends_ordinance_id" class="w-full rounded-lg border-gray-300 focus:ring-indigo-500">
+                                            <option value="">None (This is a new Parent)</option>
+                                            <option v-for="ex in existing_ordinances" :key="ex.id" :value="ex.id">
+                                                {{ ex.ordinance_number }} - {{ ex.title }}
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div v-if="form.amends_ordinance_id" class="col-span-1">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Action / Effect</label>
+                                        <select v-model="form.relationship_type" class="w-full rounded-lg border-gray-300 font-medium text-indigo-900 bg-indigo-50 border-indigo-200">
+                                            <option value="Amends">Amends (Status -> Amended)</option>
+                                            <option value="Repeals">Repeals (Status -> Repealed)</option>
+                                            <option value="Supersedes">Supersedes</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-span-1 md:col-span-2">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Remarks</label>
+                                        <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border-gray-300 text-sm" placeholder="Additional notes..."></textarea>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Approved By</label>
-                                    <input v-model="form.approved_by" type="text" placeholder="e.g., City Mayor" class="w-full rounded-lg border-gray-300" />
-                                </div>
-                            </div>
 
-                            <div class="bg-indigo-50/50 p-6 rounded-xl border border-indigo-100/80 space-y-6">
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Sponsors / Authors</label>
-                                    <select v-model="form.sponsor_department_ids" multiple class="w-full h-24 rounded-lg border-gray-300">
-                                        <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
-                                    </select>
-                                    <p class="text-xs text-gray-500 mt-1">Hold Ctrl to select multiple sponsors.</p>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 border-t pt-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Date Enacted</label>
+                                        <input v-model="form.date_enacted" type="date" class="w-full rounded-lg border-gray-300" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Date Approved</label>
+                                        <input v-model="form.date_approved" type="date" class="w-full rounded-lg border-gray-300" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Effectivity</label>
+                                        <input v-model="form.effectivity_date" type="date" class="w-full rounded-lg border-gray-300" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Implementing Office (Optional)</label>
-                                    <select v-model="form.implementing_department_ids" multiple class="w-full h-24 rounded-lg border-gray-300">
-                                        <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
-                                    </select>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Attested By</label>
+                                        <input v-model="form.attested_by" type="text" placeholder="e.g., SP Secretary" class="w-full rounded-lg border-gray-300" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Approved By</label>
+                                        <input v-model="form.approved_by" type="text" placeholder="e.g., City Mayor" class="w-full rounded-lg border-gray-300" />
+                                    </div>
+                                </div>
+
+                                <div class="bg-indigo-50/50 p-6 rounded-xl border border-indigo-100/80 space-y-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Sponsors / Authors</label>
+                                        <select v-model="form.sponsor_department_ids" multiple class="w-full h-24 rounded-lg border-gray-300">
+                                            <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                        </select>
+                                        <p class="text-xs text-gray-500 mt-1">Hold Ctrl to select multiple sponsors.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Implementing Office (Optional)</label>
+                                        <select v-model="form.implementing_department_ids" multiple class="w-full h-24 rounded-lg border-gray-300">
+                                            <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="border-t pt-6">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Upload PDF</label>
+                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                                </div>
+
+                                <div class="flex justify-end pt-6 border-t">
+                                    <button type="button" class="mr-3 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg" @click="showDialog = false">Cancel</button>
+                                    <button type="submit" class="bg-indigo-600 px-6 py-2 text-white rounded-lg hover:bg-indigo-700" :disabled="form.processing">
+                                        {{ form.processing ? 'Saving...' : 'Save' }}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div v-show="activeModalTab === 'history'" class="space-y-6">
+                            <div v-if="selectedRecord?.audits && selectedRecord.audits.length > 0">
+                                <div class="relative border-l-2 border-gray-200 ml-3 space-y-8">
+                                    <div v-for="audit in selectedRecord.audits" :key="audit.id" class="relative pl-6">
+                                        <div class="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white"
+                                            :class="{
+                                                'bg-green-500': audit.action === 'Created',
+                                                'bg-blue-500': audit.action === 'Updated',
+                                                'bg-red-500': audit.action === 'Deleted'
+                                            }"
+                                        ></div>
+
+                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                            <div>
+                                                <p class="text-sm font-bold text-gray-900">
+                                                    {{ audit.action }} by <span class="text-indigo-600">{{ audit.user?.name || 'Unknown' }}</span>
+                                                </p>
+                                                <p class="text-xs text-gray-500 font-medium">
+                                                    {{ getChangedFields(audit) }}
+                                                </p>
+                                            </div>
+                                            <span class="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded flex items-center gap-1">
+                                                <Clock class="w-3 h-3" />
+                                                {{ formatAuditDate(audit.created_at) }}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="border-t pt-6">
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Upload PDF</label>
-                                <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                            <div v-else class="text-center py-12">
+                                <div class="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Clock class="w-6 h-6 text-gray-400" />
+                                </div>
+                                <p class="text-gray-900 font-medium">No history found</p>
+                                <p class="text-xs text-gray-500">Changes will appear here once edits are made.</p>
                             </div>
+                        </div>
 
-                            <div class="flex justify-end pt-6 border-t">
-                                <button type="button" class="mr-3 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg" @click="showDialog = false">Cancel</button>
-                                <button type="submit" class="bg-indigo-600 px-6 py-2 text-white rounded-lg hover:bg-indigo-700" :disabled="form.processing">
-                                    {{ form.processing ? 'Saving...' : 'Save' }}
-                                </button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             </Transition>
@@ -479,7 +592,6 @@ const getSponsors = (depts: any[]) => {
 
                         <div class="mb-8">
                             <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">Existing Implementing Rules</h3>
-                            
                             <div v-if="selectedOrd?.implementing_rules?.length > 0" class="space-y-3">
                                 <div v-for="rule in selectedOrd.implementing_rules" :key="rule.id" class="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50 hover:border-blue-200 transition-colors">
                                     <div class="flex items-center gap-3">
@@ -505,7 +617,6 @@ const getSponsors = (depts: any[]) => {
                             <h3 class="text-sm font-bold text-green-900 uppercase tracking-wide mb-4 flex items-center gap-2">
                                 <Plus class="w-4 h-4" /> Add New Rule
                             </h3>
-                            
                             <form @submit.prevent="submitIRR" class="space-y-4">
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">Implementation Status</label>
@@ -513,20 +624,17 @@ const getSponsors = (depts: any[]) => {
                                         <option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option>
                                     </select>
                                 </div>
-
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">Office in Charge of IRR</label>
                                     <select v-model="irrForm.lead_office_id" class="w-full rounded-lg border-gray-300 bg-white">
                                         <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                     </select>
                                 </div>
-
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">Upload IRR File (PDF)</label>
                                     <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-white file:text-green-700 hover:file:bg-green-50"/>
                                     <p v-if="irrForm.errors.file" class="text-red-500 text-xs mt-1">{{ irrForm.errors.file }}</p>
                                 </div>
-
                                 <div class="flex justify-end pt-2">
                                     <button type="submit" class="bg-green-600 px-4 py-2 text-white rounded-lg hover:bg-green-700 shadow-sm text-sm font-medium" :disabled="irrForm.processing">
                                         {{ irrForm.processing ? 'Uploading...' : 'Save Rule' }}

@@ -13,8 +13,15 @@ class EOController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Fetch the EOs with their relationships for the Table
-        $query = ExecutiveOrder::with(['status', 'departments', 'parentEO', 'implementingRules.leadOffice', 'amendments']);
+        // 1. Fetch EOs with relationships AND audits.user (History)
+        $query = ExecutiveOrder::with([
+            'status', 
+            'departments', 
+            'parentEO', 
+            'implementingRules.leadOffice', 
+            'amendments', 
+            'audits.user' // <--- Essential for the History Tab
+        ]);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -28,14 +35,10 @@ class EOController extends Controller
                      ->paginate(10)
                      ->withQueryString();
 
-        // 2. Fetch Data for the Modal Dropdowns
-        $departments = Department::orderBy('name')->get();
-        $statuses = DB::table('statuses')->orderBy('name')->get();
-
         return Inertia::render('eo/Index', [
             'eos' => $eos,
-            'departments' => $departments,
-            'statuses' => $statuses,
+            'departments' => Department::orderBy('name')->get(),
+            'statuses' => DB::table('statuses')->orderBy('name')->get(),
             'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title')->orderBy('eo_number', 'desc')->get(),
             'filters' => $request->only(['search']),
             'flash' => [
@@ -59,29 +62,22 @@ class EOController extends Controller
             'support_office_ids.*' => 'exists:departments,id',
             'status_id' => 'required|exists:statuses,id',
             'file' => 'required|file|mimes:pdf|max:10240',
-            // NEW VALIDATIONS
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($request, $validated) {
-
-            // 1. AUTOMATION: Update Parent Status Logic
+            // 1. AUTOMATION: Update Parent Status
             if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
-                
                 $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $action = $validated['relationship_type'];
 
                 if ($parentEO) {
                     if ($action === 'Amends') {
-                        $statusId = DB::table('statuses')->where('name', 'Amended')->value('id'); 
-                        $parentEO->update(['status_id' => $statusId]);
-                    } 
-                    elseif ($action === 'Repeals') {
-                        $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id'); 
-                        $parentEO->update(['status_id' => $statusId]);
-                    }
-                    elseif ($action === 'Supplements') {
+                        $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                    } elseif ($action === 'Repeals') {
+                        $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
+                    } elseif ($action === 'Supplements') {
                         $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
                         if ($parentEO->status_id != $activeId) {
                              $parentEO->update(['status_id' => $activeId]);
@@ -90,14 +86,14 @@ class EOController extends Controller
                 }
             }
 
-            // 2. Handle File Upload
+            // 2. Handle File
             $path = $request->file('file')->store('eos', 'public');
 
-            // 3. Create the EO Record
+            // 3. Create
             $eo = ExecutiveOrder::create([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
-                'relationship_type' => $validated['relationship_type'] ?? null, // SAVE THIS
-                'remarks' => $validated['remarks'] ?? null,                     // SAVE THIS
+                'relationship_type' => $validated['relationship_type'] ?? null,
+                'remarks' => $validated['remarks'] ?? null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
                 'date_issued' => $validated['date_issued'],
@@ -138,7 +134,6 @@ class EOController extends Controller
             'support_office_ids' => 'nullable|array',
             'status_id' => 'required|exists:statuses,id',
             'file' => 'nullable|file|mimes:pdf|max:10240',
-            // NEW VALIDATIONS FOR UPDATE
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
         ]);
@@ -146,10 +141,7 @@ class EOController extends Controller
         DB::transaction(function () use ($request, $validated, $eo) {
             
             // 1. AUTOMATION: Update Parent Status on Edit
-            // Only run if relationship info is present
             if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
-                
-                // Logic: If the user changed the parent OR the relationship type, trigger the update on the (new) parent
                 if ($eo->amends_eo_id != $validated['amends_eo_id'] || $eo->relationship_type != $validated['relationship_type']) {
                     
                     $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
@@ -157,12 +149,9 @@ class EOController extends Controller
 
                     if ($parentEO) {
                         if ($action === 'Amends') {
-                            $statusId = DB::table('statuses')->where('name', 'Amended')->value('id');
-                            $parentEO->update(['status_id' => $statusId]);
-                        } 
-                        elseif ($action === 'Repeals') {
-                            $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id');
-                            $parentEO->update(['status_id' => $statusId]);
+                            $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                        } elseif ($action === 'Repeals') {
+                            $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
                         }
                     }
                 }
@@ -179,8 +168,8 @@ class EOController extends Controller
             // 3. Update EO Record
             $eo->update([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
-                'relationship_type' => $validated['relationship_type'] ?? null, // UPDATE THIS
-                'remarks' => $validated['remarks'] ?? null,                     // UPDATE THIS
+                'relationship_type' => $validated['relationship_type'] ?? null,
+                'remarks' => $validated['remarks'] ?? null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
                 'date_issued' => $validated['date_issued'],
