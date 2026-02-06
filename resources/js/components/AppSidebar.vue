@@ -42,31 +42,19 @@ const mainNavItems = computed(() => {
             title: 'Dashboard',
             href: dashboard(), 
             icon: LayoutGrid,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
         {
             title: 'EO Profiling',
             href: route('eo.index'),
             icon: FileText,
-            roles: ['system_admin', 'supervisor']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
         {
             title: 'Ordinances',
             href: route('ordinances.index'),
             icon: ScrollText,
-            roles: ['system_admin', 'supervisor', 'read_only']
-        },
-        {
-            title: 'My Assignments',
-            href: '#',
-            icon: Briefcase,
-            roles: ['focal_person']
-        },
-        {
-            title: 'Monitoring Board',
-            href: '#',
-            icon: Activity,
-            roles: ['monitoring_committee', 'system_admin']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
         {
             title: 'User Management',

@@ -303,7 +303,7 @@ const getSponsors = (depts: any[]) => {
                     <input v-model="searchTerm" type="text" placeholder="Search Ord. No. or Title..." class="block w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none" />
                     <button v-if="searchTerm" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
                 </div>
-                <button class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-indigo-700 transition" @click="openAddDialog">
+                <button v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-indigo-700 transition" @click="openAddDialog">
                     <Plus class="h-4 w-4" /> Encode Ordinance
                 </button>
             </div>
@@ -371,8 +371,8 @@ const getSponsors = (depts: any[]) => {
                                             <span class="text-gray-300">|</span>
                                             <a v-if="ord.file_url" :href="ord.file_url" target="_blank" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">View</a>
                                             <span v-else class="text-sm text-gray-400 cursor-not-allowed">—</span>
-                                            <span class="text-gray-300">|</span>
-                                            <button @click="openEditDialog(ord)" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">Edit</button>
+                                            <span v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="text-gray-300">|</span>
+                                            <button @click="openEditDialog(ord)" v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">Edit</button>
                                         </div>
                                     </td>
                                 </tr>

@@ -360,9 +360,9 @@ const getLeadOffice = (depts: any[]) => {
                                             <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">View</a>
                                             <span v-else class="text-sm text-gray-400 cursor-not-allowed">—</span>
                                             
-                                            <span class="text-gray-300">|</span>
+                                            <span v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="text-gray-300">|</span>
                                             
-                                            <button @click="openEditDialog(eo)" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">Edit</button>
+                                            <button @click="openEditDialog(eo)" v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">Edit</button>
                                         </div>
                                     </td>
                                 </tr>
