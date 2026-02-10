@@ -34,5 +34,6 @@ const { isCurrentUrl } = useCurrentUrl();
                 </SidebarMenuButton>
             </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarGroupLabel>Settings</SidebarGroupLabel>
     </SidebarGroup>
 </template>
