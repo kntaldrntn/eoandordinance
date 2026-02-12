@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { 
-    Search, FileText, Calendar, Download, Building2, Paperclip, 
-    AlertCircle, Link as LinkIcon, Clock, UserCheck, Gavel, ChevronDown, ChevronUp 
+    Search, Calendar, Download, Building2, Paperclip, 
+    AlertCircle, Link as LinkIcon, UserCheck, Gavel, ChevronDown, ChevronUp,
+    CheckCircle2, XCircle // <--- Added these icons
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
-import TransparencyTimeline from '@/components/TransparencyTimeline.vue';
+import TransparencyTimeline from '@/Components/TransparencyTimeline.vue';
 
 const props = defineProps<{
     records: {
@@ -21,7 +22,7 @@ const props = defineProps<{
 const search = ref(props.filters.search || '');
 const year = ref(props.filters.year || '');
 const activeTab = ref(props.activeType || 'eo');
-const expandedId = ref<number | null>(null); // To toggle history view
+const expandedId = ref<number | null>(null);
 
 // --- LOGIC ---
 const updateParams = debounce(() => {
@@ -46,20 +47,20 @@ const toggleHistory = (id: number) => {
 // --- STYLING HELPERS ---
 const getStatusColor = (statusName: string) => {
     switch(statusName) {
-        case 'Active': return 'bg-green-100 text-green-700 border-green-200 ring-green-600/20';
-        case 'Amended': return 'bg-amber-100 text-amber-700 border-amber-200 ring-amber-600/20';
+        case 'Active': return 'bg-green-50 text-green-700 border-green-200 ring-green-600/20';
+        case 'Amended': return 'bg-amber-50 text-amber-700 border-amber-200 ring-amber-600/20';
         case 'Repealed': 
-        case 'Superseded': return 'bg-red-100 text-red-700 border-red-200 ring-red-600/20';
-        default: return 'bg-gray-100 text-gray-700 border-gray-200 ring-gray-500/10';
+        case 'Superseded': return 'bg-red-50 text-red-700 border-red-200 ring-red-600/20';
+        default: return 'bg-gray-50 text-gray-700 border-gray-200 ring-gray-500/10';
     }
 };
 
-const getCardClass = (statusName: string) => {
-    const inactive = ['repealed', 'superseded', 'amended'];
-    if (inactive.includes(statusName)) {
-        return 'opacity-85 grayscale-[0.3] hover:grayscale-0 hover:opacity-100'; // Dimmed but wakes up on hover
+// 1. UPDATED: Dimming Logic uses is_active boolean
+const getCardClass = (isActive: boolean) => {
+    if (!isActive) {
+        return 'opacity-75 grayscale-[0.5] hover:grayscale-0 hover:opacity-100 bg-gray-50/50'; 
     }
-    return '';
+    return 'bg-white'; // Active items stay bright
 };
 
 // --- DATA HELPERS ---
@@ -129,17 +130,11 @@ const getSponsors = (depts: any[]) => {
             <div v-if="records.data.length > 0" class="grid gap-6">
                 
                 <div v-for="item in records.data" :key="item.id" 
-                    class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-6 relative overflow-hidden"
-                    :class="getCardClass(item.status.name)"
+                    class="group rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-6 relative overflow-hidden"
+                    :class="getCardClass(item.is_active)"
                 >
-                    
                     <div class="absolute left-0 top-0 bottom-0 w-1.5 transition-colors" 
-                        :class="{
-                            'bg-green-500': item.status.name === 'Active',
-                            'bg-amber-400': item.status.name === 'Amended',
-                            'bg-red-500': ['Repealed', 'Superseded'].includes(item.status.name),
-                            'bg-gray-300': !['Active','Amended','Repealed','Superseded'].includes(item.status.name)
-                        }">
+                        :class="item.is_active ? 'bg-green-500' : 'bg-gray-400'">
                     </div>
 
                     <div class="flex flex-col md:flex-row md:items-start gap-6 pl-2">
@@ -150,6 +145,13 @@ const getSponsors = (depts: any[]) => {
                                     {{ activeTab === 'eo' ? item.eo_number : item.ordinance_number }}
                                 </span>
                                 
+                                <span v-if="item.is_active" class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
+                                    <CheckCircle2 class="w-3 h-3" /> In Effect
+                                </span>
+                                <span v-else class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                                    <XCircle class="w-3 h-3" /> Inactive
+                                </span>
+
                                 <span :class="['px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ring-1 ring-inset', getStatusColor(item.status.name)]">
                                     {{ item.status.name }}
                                 </span>
@@ -176,9 +178,9 @@ const getSponsors = (depts: any[]) => {
                                         </div>
                                     </div>
                                     <a v-if="activeTab === 'eo' ? item.parent_e_o?.file_url : item.parent_ordinance?.file_url" 
-                                    :href="activeTab === 'eo' ? item.parent_e_o?.file_url : item.parent_ordinance?.file_url" 
-                                    target="_blank"
-                                    class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-indigo-200 rounded text-xs font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors"
+                                       :href="activeTab === 'eo' ? item.parent_e_o?.file_url : item.parent_ordinance?.file_url" 
+                                       target="_blank"
+                                       class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-indigo-200 rounded text-xs font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors"
                                     >
                                         <Download class="w-3 h-3" /> View Parent
                                     </a>
@@ -191,9 +193,9 @@ const getSponsors = (depts: any[]) => {
                                             <span>Amended by <strong>{{ activeTab === 'eo' ? child.eo_number : child.ordinance_number }}</strong></span>
                                         </div>
                                         <a v-if="child.file_url" 
-                                        :href="child.file_url" 
-                                        target="_blank"
-                                        class="shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white border border-red-200 rounded text-[10px] font-bold text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                                           :href="child.file_url" 
+                                           target="_blank"
+                                           class="shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white border border-red-200 rounded text-[10px] font-bold text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                                         >
                                             <Download class="w-3 h-3" /> Download {{ activeTab === 'eo' ? child.eo_number : child.ordinance_number }}
                                         </a>

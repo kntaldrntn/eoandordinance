@@ -11,8 +11,19 @@ class ExecutiveOrder extends Model
     use RecordsActivity;
     protected $guarded = [];
     
-    // 1. Force these attributes to be included in JSON
     protected $appends = ['file_url', 'public_timeline'];
+
+    // 1. ADDED: Cast is_active to boolean
+    protected $casts = [
+        'is_active' => 'boolean',
+        'date_issued' => 'datetime', // Good practice to cast dates too
+    ];
+
+    // 2. ADDED: Scope for easy filtering (e.g., ExecutiveOrder::active()->get())
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 
     public function status()
     {
@@ -26,7 +37,6 @@ class ExecutiveOrder extends Model
                     ->withTimestamps();
     }
 
-    // 2. Accessor for File URL
     public function getFileUrlAttribute()
     {
         return $this->file_path ? Storage::url($this->file_path) : null;
@@ -47,12 +57,11 @@ class ExecutiveOrder extends Model
         return $this->hasMany(ImplementingRuleandRegulation::class);
     }
     
-    // 3. Updated Timeline Logic with Backfill + Smart Links
     public function getPublicTimelineAttribute()
     {
         $timeline = collect();
 
-        // A. The "Genesis" Event (Backfill)
+        // A. The "Genesis" Event
         $originDate = $this->date_issued ?? $this->created_at;
         
         $timeline->push([
@@ -64,7 +73,7 @@ class ExecutiveOrder extends Model
             'file_url' => null,
         ]);
 
-        // B. Audit Logs (Filtered)
+        // B. Audit Logs (Updated to include is_active changes)
         $audits = $this->audits()
             ->where('action', '!=', 'Created') 
             ->latest()
@@ -90,7 +99,20 @@ class ExecutiveOrder extends Model
                         'date_display' => $audit->created_at->format('M d, Y'),
                         'time' => $audit->created_at->format('h:i A'),
                         'action' => 'Status Updated',
-                        'details' => [['text' => 'Status changed (e.g. to Amended/Repealed).']],
+                        'details' => [['text' => 'Legal status changed (e.g. to Amended/Repealed).']],
+                        'file_url' => null,
+                    ];
+                }
+
+                // 3. ADDED: Active/Inactive Toggle History
+                if (isset($audit->new_values['is_active'])) {
+                    $isActive = $audit->new_values['is_active'];
+                    return [
+                        'date' => $audit->created_at,
+                        'date_display' => $audit->created_at->format('M d, Y'),
+                        'time' => $audit->created_at->format('h:i A'),
+                        'action' => $isActive ? 'Marked as Active' : 'Marked as Inactive',
+                        'details' => [['text' => $isActive ? 'Record is now effective.' : 'Record is no longer in effect.']],
                         'file_url' => null,
                     ];
                 }
@@ -99,7 +121,7 @@ class ExecutiveOrder extends Model
             })
             ->filter();
 
-        // C. AMENDMENTS (Smart Links)
+        // C. AMENDMENTS
         $amendments = $this->amendments->map(function ($child) {
             $childDate = $child->date_issued ?? $child->created_at;
             
@@ -114,7 +136,7 @@ class ExecutiveOrder extends Model
                         'is_bold' => true
                     ]
                 ],
-                'file_url' => $child->file_url, // Uses the accessor
+                'file_url' => $child->file_url, 
                 'file_name' => "Download " . $child->eo_number
             ];
         });

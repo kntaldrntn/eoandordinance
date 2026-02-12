@@ -11,8 +11,20 @@ class Ordinance extends Model
     use RecordsActivity;
     protected $guarded = [];
 
-    // 1. Force attributes
     protected $appends = ['file_url', 'public_timeline'];
+
+    // 1. ADDED: Casts
+    protected $casts = [
+        'is_active' => 'boolean',
+        'date_enacted' => 'datetime',
+        'date_approved' => 'datetime',
+    ];
+
+    // 2. ADDED: Scope
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 
     public function getFileUrlAttribute()
     {
@@ -45,7 +57,6 @@ class Ordinance extends Model
         return $this->hasMany(ImplementingRuleandRegulation::class, 'ordinance_id');
     }
 
-    // 2. Updated Timeline Logic
     public function getPublicTimelineAttribute()
     {
         $timeline = collect();
@@ -88,6 +99,20 @@ class Ordinance extends Model
                         'file_url' => null,
                     ];
                 }
+                
+                // 3. ADDED: Active/Inactive Toggle History
+                if (isset($audit->new_values['is_active'])) {
+                    $isActive = $audit->new_values['is_active'];
+                    return [
+                        'date' => $audit->created_at,
+                        'date_display' => $audit->created_at->format('M d, Y'),
+                        'time' => $audit->created_at->format('h:i A'),
+                        'action' => $isActive ? 'Marked as Active' : 'Marked as Inactive',
+                        'details' => [['text' => $isActive ? 'Record is now effective.' : 'Record is no longer in effect.']],
+                        'file_url' => null,
+                    ];
+                }
+                
                 return null;
             })
             ->filter();

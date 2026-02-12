@@ -64,6 +64,7 @@ class EOController extends Controller
             'file' => 'required|file|mimes:pdf|max:10240',
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
+            'is_active' => 'boolean', // <--- ADDED VALIDATION
         ]);
 
         DB::transaction(function () use ($request, $validated) {
@@ -101,6 +102,7 @@ class EOController extends Controller
                 'legal_basis' => $validated['legal_basis'],
                 'issuing_authority' => 'City Mayor',
                 'status_id' => $validated['status_id'],
+                'is_active' => $validated['is_active'] ?? true, // <--- ADDED SAVE (Default true)
                 'file_path' => $path,
             ]);
 
@@ -136,6 +138,7 @@ class EOController extends Controller
             'file' => 'nullable|file|mimes:pdf|max:10240',
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
+            'is_active' => 'boolean', // <--- ADDED VALIDATION
         ]);
 
         DB::transaction(function () use ($request, $validated, $eo) {
@@ -176,6 +179,7 @@ class EOController extends Controller
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'status_id' => $validated['status_id'],
+                'is_active' => $validated['is_active'], // <--- ADDED UPDATE
             ]);
 
             // 4. Sync Departments

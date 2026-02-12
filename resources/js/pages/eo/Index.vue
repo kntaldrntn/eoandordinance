@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download, AlertCircle, Clock } from 'lucide-vue-next';
+import { 
+    FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
+    BookOpen, Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle 
+} from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -20,8 +23,9 @@ const props = defineProps<{
             effectivity_date: string;
             legal_basis: string;
             status_id: number;
+            is_active: boolean; 
             
-            // Audit History (ADDED)
+            // Audit History
             audits: Array<{
                 id: number;
                 user: { name: string };
@@ -105,12 +109,12 @@ watch(() => props.flash, (flash) => {
 const showDialog = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
-const activeModalTab = ref('details'); // 'details' or 'history'
-const selectedRecord = ref<any>(null); // For history view
+const activeModalTab = ref('details'); 
+const selectedRecord = ref<any>(null); 
 
 const form = useForm({
     amends_eo_id: '' as string | number,
-    relationship_type: 'Amends', // Default
+    relationship_type: 'Amends', 
     remarks: '',
     eo_number: '',
     title: '',
@@ -120,6 +124,7 @@ const form = useForm({
     lead_office_id: '' as string | number,
     support_office_ids: [] as number[],
     status_id: '' as string | number,
+    is_active: true, // <--- Added Default
     file: null as File | null,
 });
 
@@ -145,26 +150,27 @@ function openAddDialog() {
     
     form.reset();
     form.clearErrors();
-    form.relationship_type = 'Amends'; 
+    form.relationship_type = 'Amends';
+    form.is_active = true; // Default to active
     showDialog.value = true;
 }
 
 function openEditDialog(eo: any) {
     isEdit.value = true;
     editingId.value = eo.id;
-    selectedRecord.value = eo; // Store for Audit Log
+    selectedRecord.value = eo; 
     activeModalTab.value = 'details';
     
     form.clearErrors();
     
     form.eo_number = eo.eo_number;
     form.title = eo.title;
-    form.date_issued = eo.date_issued;
-    form.effectivity_date = eo.effectivity_date;
+    form.date_issued = eo.date_issued ? eo.date_issued.split('T')[0] : ''; // Handle ISO string if needed
+    form.effectivity_date = eo.effectivity_date ? eo.effectivity_date.split('T')[0] : '';
     form.legal_basis = eo.legal_basis || '';
     form.status_id = eo.status_id;
+    form.is_active = Boolean(eo.is_active); // <--- Load Active Status
     
-    // Load Relationship Data
     form.amends_eo_id = eo.amends_eo_id || '';
     form.relationship_type = eo.relationship_type || 'Amends'; 
     form.remarks = eo.remarks || '';
@@ -176,7 +182,17 @@ function openEditDialog(eo: any) {
     showDialog.value = true;
 }
 
-// --- History Helpers (Safety Checked) ---
+// --- Helper: Format Date ---
+const formatDate = (dateString: string) => {
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+};
+
+// --- History Helpers ---
 const formatAuditDate = (date: string) => {
     return new Date(date).toLocaleString('en-US', { 
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
@@ -190,7 +206,6 @@ const getChangedFields = (audit: any) => {
     let newVals = audit.new_values;
     let oldVals = audit.old_values;
 
-    // Safety: Decode if they come as strings
     if (typeof newVals === 'string') { try { newVals = JSON.parse(newVals); } catch (e) {} }
     if (typeof oldVals === 'string') { try { oldVals = JSON.parse(oldVals); } catch (e) {} }
 
@@ -198,7 +213,7 @@ const getChangedFields = (audit: any) => {
         const changes = Object.keys(newVals)
             .filter(key => key !== 'updated_at')
             .map(key => {
-                const field = key.replace(/_/g, ' '); // Clean field name
+                const field = key.replace(/_/g, ' '); 
                 const from = oldVals && oldVals[key] ? oldVals[key] : '(empty)';
                 const to = newVals[key];
                 return `${field}: "${from}" → "${to}"`;
@@ -232,10 +247,27 @@ function submitIRR() {
     irrForm.post(route('irr.store'), {
         onSuccess: () => {
             irrForm.reset();
-            showIRRDialog.value = false;
+            // We keep the dialog open to allow adding more or seeing the list update
             notyf.success('IRR Added Successfully');
+            showIRRDialog.value = false; // Closing it forces refresh of props usually
         },
     });
+}
+
+// --- Delete IRR Function ---
+function deleteIRR(irrId: number) {
+    if (confirm('Are you sure you want to delete this IRR file?')) {
+        router.delete(route('irr.destroy', irrId), {
+            onSuccess: () => {
+                notyf.success('IRR Deleted Successfully');
+                // The props will update automatically via Inertia
+                showIRRDialog.value = false; 
+            },
+            onError: () => {
+                notyf.error('Failed to delete IRR');
+            }
+        });
+    }
 }
 
 function handleFileChange(e: Event) {
@@ -309,8 +341,14 @@ const getLeadOffice = (depts: any[]) => {
                             </template>
 
                             <template v-else-if="eos.data.length > 0">
-                                <tr v-for="eo in eos.data" :key="eo.id" class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-6 py-3 font-mono font-medium text-blue-600">{{ eo.eo_number }}</td>
+                                <tr v-for="eo in eos.data" :key="eo.id" 
+                                    class="transition-colors border-l-4"
+                                    :class="eo.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/80 opacity-75 border-red-300'"
+                                >
+                                    <td class="px-6 py-3 font-mono font-medium text-blue-600">
+                                        {{ eo.eo_number }}
+                                        <div v-if="!eo.is_active" class="text-[10px] text-red-500 font-bold uppercase mt-1">Inactive</div>
+                                    </td>
                                     <td class="px-6 py-3">
                                         <div class="line-clamp-2 text-gray-900 font-medium">{{ eo.title }}</div>
                                         
@@ -331,8 +369,8 @@ const getLeadOffice = (depts: any[]) => {
                                         </div>
 
                                     </td>
-                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.date_issued }}</td>
-                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ eo.effectivity_date }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ formatDate(eo.date_issued) }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ formatDate(eo.effectivity_date) }}</td>
                                     <td class="px-6 py-3 text-xs text-gray-600">
                                         <span class="flex items-center gap-1">
                                             <Building2 class="w-3 h-3 text-gray-400" />
@@ -429,11 +467,29 @@ const getLeadOffice = (depts: any[]) => {
                                         <input v-model="form.eo_number" type="text" class="w-full rounded-lg border-gray-300" />
                                         <p v-if="form.errors.eo_number" class="text-red-500 text-xs mt-1">{{ form.errors.eo_number }}</p>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
-                                            <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
-                                        </select>
+                                    
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Legal Status</label>
+                                            <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
+                                                <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                            <span class="text-xs font-medium text-gray-700">Currently in Effect?</span>
+                                            <button 
+                                                type="button" 
+                                                @click="form.is_active = !form.is_active"
+                                                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                                :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'"
+                                            >
+                                                <span 
+                                                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                                                    :class="form.is_active ? 'translate-x-4.5' : 'translate-x-0.5'"
+                                                />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="col-span-1 md:col-span-2">
@@ -581,9 +637,14 @@ const getLeadOffice = (depts: any[]) => {
                                             <p class="text-xs text-gray-500">Lead: {{ rule.lead_office?.name }}</p>
                                         </div>
                                     </div>
-                                    <a :href="rule.file_url" target="_blank" class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
-                                        <Download class="w-3 h-3" /> Download
-                                    </a>
+                                    <div class="flex items-center gap-2">
+                                        <a :href="rule.file_url" target="_blank" class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
+                                            <Download class="w-3 h-3" /> Download
+                                        </a>
+                                        <button @click="deleteIRR(rule.id)" class="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors" title="Delete IRR">
+                                            <Trash2 class="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div v-else class="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">

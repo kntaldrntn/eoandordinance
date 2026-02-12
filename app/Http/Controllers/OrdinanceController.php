@@ -13,14 +13,14 @@ class OrdinanceController extends Controller
 {
     public function index(Request $request)
     {
-        // Added 'audits.user' to eager load the history and the user who made changes
+        // 1. Fetch Ordinances with relationships AND audits.user (History)
         $query = Ordinance::with([
             'status', 
             'departments', 
             'parentOrdinance', 
             'amendments', 
             'implementingRules.leadOffice', 
-            'audits.user' // <--- CRITICAL ADDITION FOR HISTORY
+            'audits.user' // <--- CRITICAL FOR HISTORY TAB
         ]);
 
         if ($request->filled('search')) {
@@ -65,6 +65,7 @@ class OrdinanceController extends Controller
             // Array of department IDs
             'sponsor_department_ids' => 'nullable|array', 
             'implementing_department_ids' => 'nullable|array',
+            'is_active' => 'boolean', // <--- ADDED VALIDATION
         ]);
 
         DB::transaction(function () use ($request, $validated) {
@@ -98,6 +99,7 @@ class OrdinanceController extends Controller
                 'attested_by' => $validated['attested_by'],
                 'approved_by' => $validated['approved_by'],
                 'status_id' => $validated['status_id'],
+                'is_active' => $validated['is_active'] ?? true, // <--- ADDED SAVE
                 'file_path' => $path,
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
@@ -156,6 +158,7 @@ class OrdinanceController extends Controller
             // Offices
             'sponsor_department_ids' => 'nullable|array', 
             'implementing_department_ids' => 'nullable|array',
+            'is_active' => 'boolean', // <--- ADDED VALIDATION
         ]);
 
         DB::transaction(function () use ($request, $validated, $ordinance) {
@@ -199,7 +202,7 @@ class OrdinanceController extends Controller
                 'attested_by' => $validated['attested_by'],
                 'approved_by' => $validated['approved_by'],
                 'status_id' => $validated['status_id'],
-                // File path is handled above or stays distinct
+                'is_active' => $validated['is_active'], // <--- ADDED UPDATE
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,

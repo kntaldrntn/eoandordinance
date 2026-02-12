@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { FileText, Plus, Search, Save, Calendar, Building2, Link as LinkIcon, BookOpen, Download, AlertCircle, UserCheck, Clock } from 'lucide-vue-next';
+import { 
+    FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
+    BookOpen, Download, AlertCircle, UserCheck, Clock, Trash2 
+} from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -20,8 +23,9 @@ const props = defineProps<{
             file_url: string;
             attested_by: string | null;
             approved_by: string | null;
+            is_active: boolean; // <--- Added is_active
 
-            // Audit History (ADDED)
+            // Audit History
             audits: Array<{
                 id: number;
                 user: { name: string };
@@ -106,8 +110,8 @@ watch(() => props.flash, (flash) => {
 const showDialog = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
-const activeModalTab = ref('details'); // 'details' or 'history'
-const selectedRecord = ref<any>(null); // For history view
+const activeModalTab = ref('details'); 
+const selectedRecord = ref<any>(null); 
 
 const form = useForm({
     ordinance_number: '',
@@ -118,6 +122,7 @@ const form = useForm({
     attested_by: '',
     approved_by: '',
     status_id: '' as string | number,
+    is_active: true, // <--- Default Active
     
     // Logic
     amends_ordinance_id: '' as string | number,
@@ -154,26 +159,28 @@ function openAddDialog() {
     form.reset();
     form.clearErrors();
     form.relationship_type = 'Amends';
+    form.is_active = true; // Default active
     showDialog.value = true;
 }
 
 function openEditDialog(ord: any) {
     isEdit.value = true;
     editingId.value = ord.id;
-    selectedRecord.value = ord; // Save for history view
-    activeModalTab.value = 'details'; // Always start on details
+    selectedRecord.value = ord; 
+    activeModalTab.value = 'details'; 
     
     form.clearErrors();
     
     // Basic Info
     form.ordinance_number = ord.ordinance_number;
     form.title = ord.title;
-    form.date_enacted = ord.date_enacted;
-    form.date_approved = ord.date_approved || '';
-    form.effectivity_date = ord.effectivity_date || '';
+    form.date_enacted = ord.date_enacted ? ord.date_enacted.split('T')[0] : '';
+    form.date_approved = ord.date_approved ? ord.date_approved.split('T')[0] : '';
+    form.effectivity_date = ord.effectivity_date ? ord.effectivity_date.split('T')[0] : '';
     form.attested_by = ord.attested_by || '';
     form.approved_by = ord.approved_by || '';
     form.status_id = ord.status_id;
+    form.is_active = Boolean(ord.is_active); // <--- Load Active Status
     
     // Relationship
     form.amends_ordinance_id = ord.amends_ordinance_id || '';
@@ -192,6 +199,16 @@ function openEditDialog(ord: any) {
     form.file = null; 
     showDialog.value = true;
 }
+
+// --- Helper: Format Date ---
+const formatDate = (dateString: string) => {
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+};
 
 function handleFileChange(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -226,23 +243,16 @@ const getChangedFields = (audit: any) => {
     let newVals = audit.new_values;
     let oldVals = audit.old_values;
 
-    // 1. Safety Check: Decode strings if necessary
-    if (typeof newVals === 'string') {
-        try { newVals = JSON.parse(newVals); } catch (e) { return 'Updated details'; }
-    }
-    if (typeof oldVals === 'string') {
-        try { oldVals = JSON.parse(oldVals); } catch (e) { oldVals = {}; }
-    }
+    if (typeof newVals === 'string') { try { newVals = JSON.parse(newVals); } catch (e) { return 'Updated details'; } }
+    if (typeof oldVals === 'string') { try { oldVals = JSON.parse(oldVals); } catch (e) { oldVals = {}; } }
     
-    // 2. Build the "From -> To" string
     if (newVals) {
         const changes = Object.keys(newVals)
-            .filter(key => key !== 'updated_at') // Skip timestamp updates
+            .filter(key => key !== 'updated_at')
             .map(key => {
                 const fieldName = key.replace(/_/g, ' '); 
                 const from = oldVals && oldVals[key] ? oldVals[key] : '(empty)';
                 const to = newVals[key] ? newVals[key] : '(empty)';
-                
                 return `${fieldName}: "${from}" → "${to}"`;
             });
             
@@ -276,10 +286,25 @@ function submitIRR() {
     irrForm.post(route('irr.store'), {
         onSuccess: () => {
             irrForm.reset();
-            showIRRDialog.value = false;
             notyf.success('IRR Added Successfully');
+            showIRRDialog.value = false;
         },
     });
+}
+
+// --- Delete IRR ---
+function deleteIRR(irrId: number) {
+    if (confirm('Are you sure you want to delete this IRR file?')) {
+        router.delete(route('irr.destroy', irrId), {
+            onSuccess: () => {
+                notyf.success('IRR Deleted Successfully');
+                showIRRDialog.value = false; 
+            },
+            onError: () => {
+                notyf.error('Failed to delete IRR');
+            }
+        });
+    }
 }
 
 // Helpers
@@ -334,8 +359,14 @@ const getSponsors = (depts: any[]) => {
                             </template>
 
                             <template v-else-if="ordinances.data.length > 0">
-                                <tr v-for="ord in ordinances.data" :key="ord.id" class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-6 py-3 font-mono font-medium text-indigo-600">{{ ord.ordinance_number }}</td>
+                                <tr v-for="ord in ordinances.data" :key="ord.id" 
+                                    class="transition-colors border-l-4"
+                                    :class="ord.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/80 opacity-75 border-red-300'"
+                                >
+                                    <td class="px-6 py-3 font-mono font-medium text-indigo-600">
+                                        {{ ord.ordinance_number }}
+                                        <div v-if="!ord.is_active" class="text-[10px] text-red-500 font-bold uppercase mt-1">Inactive</div>
+                                    </td>
                                     <td class="px-6 py-3">
                                         <div class="line-clamp-2 text-gray-900 font-medium">{{ ord.title }}</div>
                                         <div v-if="ord.parent_ordinance" class="mt-1 flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100">
@@ -346,7 +377,7 @@ const getSponsors = (depts: any[]) => {
                                             <span class="font-semibold not-italic">Note:</span> {{ ord.remarks }}
                                         </div>
                                     </td>
-                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ ord.date_enacted }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ formatDate(ord.date_enacted) }}</td>
                                     <td class="px-6 py-3 text-xs text-gray-600">
                                         <span class="flex items-center gap-1">
                                             <UserCheck class="w-3 h-3 text-gray-400" />
@@ -438,11 +469,27 @@ const getSponsors = (depts: any[]) => {
                                         <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border-gray-300" />
                                         <p v-if="form.errors.ordinance_number" class="text-red-500 text-xs mt-1">{{ form.errors.ordinance_number }}</p>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
-                                            <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
-                                        </select>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                                            <select v-model="form.status_id" class="w-full rounded-lg border-gray-300">
+                                                <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
+                                            </select>
+                                        </div>
+                                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                            <span class="text-xs font-medium text-gray-700">Currently in Effect?</span>
+                                            <button 
+                                                type="button" 
+                                                @click="form.is_active = !form.is_active"
+                                                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                                :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'"
+                                            >
+                                                <span 
+                                                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                                                    :class="form.is_active ? 'translate-x-4.5' : 'translate-x-0.5'"
+                                                />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -468,6 +515,7 @@ const getSponsors = (depts: any[]) => {
                                             <option value="Repeals">Repeals (Status -> Repealed)</option>
                                             <option value="Supersedes">Supersedes</option>
                                         </select>
+                                        <div v-if="form.errors.relationship_type" class="text-red-500 text-xs mt-1">{{ form.errors.relationship_type }}</div>
                                     </div>
                                     <div class="col-span-1 md:col-span-2">
                                         <label class="block text-sm font-semibold text-gray-700 mb-2">Remarks</label>
@@ -546,7 +594,7 @@ const getSponsors = (depts: any[]) => {
                                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                             <div>
                                                 <p class="text-sm font-bold text-gray-900">
-                                                    {{ audit.action }} by <span class="text-indigo-600">{{ audit.user?.name || 'Unknown' }}</span>
+                                                    {{ audit.action }} by <span class="text-blue-600">{{ audit.user?.name || 'Unknown' }}</span>
                                                 </p>
                                                 <p class="text-xs text-gray-500 font-medium">
                                                     {{ getChangedFields(audit) }}
@@ -576,7 +624,6 @@ const getSponsors = (depts: any[]) => {
             <Transition name="fade">
                 <div v-if="showIRRDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[95vh] overflow-y-auto">
-                        
                         <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
                             <div>
                                 <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -603,9 +650,14 @@ const getSponsors = (depts: any[]) => {
                                             <p class="text-xs text-gray-500">Lead: {{ rule.lead_office?.name }}</p>
                                         </div>
                                     </div>
-                                    <a :href="rule.file_url" target="_blank" class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
-                                        <Download class="w-3 h-3" /> Download
-                                    </a>
+                                    <div class="flex items-center gap-2">
+                                        <a :href="rule.file_url" target="_blank" class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
+                                            <Download class="w-3 h-3" /> Download
+                                        </a>
+                                        <button @click="deleteIRR(rule.id)" class="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors" title="Delete IRR">
+                                            <Trash2 class="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div v-else class="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
@@ -642,7 +694,6 @@ const getSponsors = (depts: any[]) => {
                                 </div>
                             </form>
                         </div>
-
                     </div>
                 </div>
             </Transition>

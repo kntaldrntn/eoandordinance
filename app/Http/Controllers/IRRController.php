@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ImplementingRule;
 use App\Models\ImplementingRuleandRegulation;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage; // <--- Import this!
 
 class IRRController extends Controller
 {
@@ -32,5 +31,22 @@ class IRRController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'IRR uploaded successfully.');
+    }
+
+    // --- NEW DELETE FUNCTION ---
+    public function destroy($id)
+    {
+        // 1. Find the Record
+        $irr = ImplementingRuleandRegulation::findOrFail($id);
+
+        // 2. Delete the physical PDF file from storage
+        if ($irr->file_path && Storage::disk('public')->exists($irr->file_path)) {
+            Storage::disk('public')->delete($irr->file_path);
+        }
+
+        // 3. Delete the Database Record
+        $irr->delete();
+
+        return redirect()->back()->with('success', 'IRR deleted successfully.');
     }
 }

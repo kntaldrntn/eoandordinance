@@ -14,3 +14,4 @@ import AppLogoIcon from '@/components/AppLogoIcon.vue';
         >
     </div>
 </template>
+    
