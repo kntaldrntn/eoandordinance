@@ -3,48 +3,75 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExecutiveOrder;
-use App\Models\Ordinance; // Import this
+use App\Models\Ordinance;
 use App\Models\ImplementingRuleandRegulation;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        // --- 1. CARD STATS ---
-        
-        // Total Issuances (EOs + Ordinances)
-        $total_eos = ExecutiveOrder::count();
-        $total_ordinances = Ordinance::count(); // New Stat
-        
-        // Issuances THIS YEAR (Combined)
-        $eos_this_year = ExecutiveOrder::whereYear('date_issued', Carbon::now()->year)->count();
-        $ords_this_year = Ordinance::whereYear('date_enacted', Carbon::now()->year)->count();
-        $total_this_year = $eos_this_year + $ords_this_year;
+        // --- 1. GET FILTERS ---
+        $filterYear = $request->input('year', 'all'); // Default to 'all' or Carbon::now()->year
+        $filterActive = $request->input('is_active', 'all'); // 'all', 'active', 'inactive'
 
-        // Pending IRRs (This model already covers both if you updated it!)
+        // Helper to apply filters
+        $applyFilters = function($query, $dateCol) use ($filterYear, $filterActive) {
+            if ($filterYear !== 'all') {
+                $query->whereYear($dateCol, $filterYear);
+            }
+            if ($filterActive !== 'all') {
+                $query->where('is_active', $filterActive === 'active' ? true : false);
+            }
+            return $query;
+        };
+
+        // --- 2. CARD STATS ---
+        
+        // Total Counts (Filtered)
+        $total_eos = $applyFilters(ExecutiveOrder::query(), 'date_issued')->count();
+        $total_ordinances = $applyFilters(Ordinance::query(), 'date_enacted')->count();
+        $total_filtered = $total_eos + $total_ordinances;
+
+        // Pending IRRs (Count only "Drafting" or "Pending")
         $pending_irrs = ImplementingRuleandRegulation::whereIn('status', ['Drafting', 'Pending Approval'])->count();
 
-        // Active Offices (Combine unique departments from both tables)
-        // We use union to get unique department IDs involved in either system
+        // Active Offices (Count unique offices involved in the filtered result)
         $active_offices = DB::table('eo_department')
+            ->join('executive_orders', 'eo_department.executive_order_id', '=', 'executive_orders.id')
             ->where('role', 'lead')
+            ->where(function($q) use ($filterYear, $filterActive) {
+                if ($filterYear !== 'all') $q->whereYear('executive_orders.date_issued', $filterYear);
+                if ($filterActive !== 'all') $q->where('executive_orders.is_active', $filterActive === 'active');
+            })
             ->select('department_id')
             ->union(
                 DB::table('ordinance_department')
+                ->join('ordinances', 'ordinance_department.ordinance_id', '=', 'ordinances.id')
                 ->where('role', 'sponsor')
+                ->where(function($q) use ($filterYear, $filterActive) {
+                    if ($filterYear !== 'all') $q->whereYear('ordinances.date_enacted', $filterYear);
+                    if ($filterActive !== 'all') $q->where('ordinances.is_active', $filterActive === 'active');
+                })
                 ->select('department_id')
             )
             ->count();
 
-        // --- 2. CHART DATA (Combined Monthly Volume) ---
-        // Helper function to get monthly counts
-        $getMonthly = function($model, $dateCol) {
-            return $model::select(DB::raw('COUNT(id) as count'), DB::raw('MONTH('.$dateCol.') as month'))
-                ->whereYear($dateCol, Carbon::now()->year)
-                ->groupBy('month')->pluck('count', 'month');
+        // --- 3. CHART DATA ---
+        // If 'all' selected, use current year for chart to keep it readable
+        $chartYear = ($filterYear === 'all') ? Carbon::now()->year : $filterYear;
+
+        $getMonthly = function($model, $dateCol) use ($chartYear, $filterActive) {
+            $q = $model::select(DB::raw('COUNT(id) as count'), DB::raw('MONTH('.$dateCol.') as month'))
+                ->whereYear($dateCol, $chartYear);
+            
+            if ($filterActive !== 'all') {
+                $q->where('is_active', $filterActive === 'active');
+            }
+            return $q->groupBy('month')->pluck('count', 'month');
         };
 
         $eo_monthly = $getMonthly(ExecutiveOrder::class, 'date_issued');
@@ -52,52 +79,68 @@ class DashboardController extends Controller
 
         $chart_data = [];
         for ($i = 1; $i <= 12; $i++) {
-            // Add EO count + Ordinance Count for that month
-            $count = ($eo_monthly[$i] ?? 0) + ($ord_monthly[$i] ?? 0);
-            $chart_data[] = $count;
+            $chart_data[] = ($eo_monthly[$i] ?? 0) + ($ord_monthly[$i] ?? 0);
         }
 
-        // --- 3. RECENT ACTIVITY (Merge & Sort) ---
-        // Fetch top 5 from both, merge, sort by date, take top 5
-        $latest_eos = ExecutiveOrder::with('status')->latest('updated_at')->take(5)->get()->map(fn($item) => [
-            'id' => $item->id,
-            'number' => $item->eo_number, // Normalize to generic 'number' key
-            'title' => $item->title,
-            'status' => $item->status->name,
-            'type' => 'EO', // Add type identifier
-            'date_raw' => $item->updated_at,
-            'date' => Carbon::parse($item->updated_at)->diffForHumans(),
-        ]);
+        // --- 4. RECENT ACTIVITY ---
+        $latest_eos = $applyFilters(ExecutiveOrder::with('status'), 'date_issued')
+            ->latest('updated_at')
+            ->take(5)->get()
+            ->map(fn($item) => [
+                'id' => $item->id,
+                'number' => $item->eo_number,
+                'title' => $item->title,
+                'status' => $item->status ? $item->status->name : 'Unknown',
+                'type' => 'EO',
+                'date_raw' => $item->updated_at,
+                'date' => Carbon::parse($item->updated_at)->diffForHumans(),
+            ]);
 
-        $latest_ords = Ordinance::with('status')->latest('updated_at')->take(5)->get()->map(fn($item) => [
-            'id' => $item->id,
-            'number' => $item->ordinance_number, // Normalize to generic 'number' key
-            'title' => $item->title,
-            'status' => $item->status->name,
-            'type' => 'ORD', // Add type identifier
-            'date_raw' => $item->updated_at,
-            'date' => Carbon::parse($item->updated_at)->diffForHumans(),
-        ]);
+        $latest_ords = $applyFilters(Ordinance::with('status'), 'date_enacted')
+            ->latest('updated_at')
+            ->take(5)->get()
+            ->map(fn($item) => [
+                'id' => $item->id,
+                'number' => $item->ordinance_number,
+                'title' => $item->title,
+                'status' => $item->status ? $item->status->name : 'Unknown',
+                'type' => 'ORD',
+                'date_raw' => $item->updated_at,
+                'date' => Carbon::parse($item->updated_at)->diffForHumans(),
+            ]);
 
-        // Merge, sort desc by date, take 5
         $recent_activity = $latest_eos->concat($latest_ords)
             ->sortByDesc('date_raw')
             ->take(5)
             ->values();
 
+        // --- 5. AVAILABLE YEARS ---
+        $eo_years = ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct();
+        $years = Ordinance::selectRaw('YEAR(date_enacted) as year')
+            ->distinct()
+            ->union($eo_years)
+            ->orderBy('year', 'desc')
+            ->pluck('year')
+            ->toArray();
+
         return Inertia::render('Dashboard', [
             'stats' => [
                 'total_eos' => $total_eos,
-                'total_ordinances' => $total_ordinances, // Pass this to view
-                'issued_this_year' => $total_this_year,  // Renamed for clarity
+                'total_ordinances' => $total_ordinances,
+                'issued_this_year' => $total_filtered,
                 'pending_irrs' => $pending_irrs,
                 'active_offices' => $active_offices,
             ],
             'chart' => [
                 'data' => $chart_data,
-                'year' => Carbon::now()->year,
+                'year' => (int)$chartYear,
             ],
             'recent_activity' => $recent_activity,
+            'filters' => [
+                'year' => $filterYear,
+                'is_active' => $filterActive,
+            ],
+            'available_years' => $years
         ]);
     }
 }

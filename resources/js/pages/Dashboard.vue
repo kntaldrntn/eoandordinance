@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { 
-    FileText, 
-    AlertCircle, 
-    ArrowUpRight, 
-    Building2, 
-    Activity, 
-    Gavel 
+    FileText, AlertCircle, ArrowUpRight, Building2, Activity, Gavel, Filter 
 } from 'lucide-vue-next';
 import VueApexCharts from 'vue3-apexcharts';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
 const props = defineProps<{
     stats: {
@@ -32,8 +28,34 @@ const props = defineProps<{
         type: string;   
         date: string;
     }>;
+    filters: {
+        year: string | number;
+        is_active: string;
+    };
+    available_years: number[];
 }>();
 
+// --- Filter State ---
+const selectedYear = ref(props.filters.year);
+const selectedActive = ref(props.filters.is_active);
+
+// --- Reload Dashboard on Filter Change ---
+const updateDashboard = debounce(() => {
+    router.get('/dashboard', { 
+        year: selectedYear.value, 
+        is_active: selectedActive.value 
+    }, { 
+        preserveState: true, 
+        preserveScroll: true,
+        only: ['stats', 'chart', 'recent_activity', 'filters'] 
+    });
+}, 300);
+
+watch([selectedYear, selectedActive], () => {
+    updateDashboard();
+});
+
+// --- Chart Config ---
 const chartOptions = computed(() => ({
     chart: { type: 'area', height: 350, fontFamily: 'inherit', toolbar: { show: false }, zoom: { enabled: false } },
     colors: ['#16a34a'],
@@ -60,11 +82,35 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex flex-1 flex-col gap-6 p-4 md:p-8 overflow-y-auto">
             
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Overview</h2>
+                    <p class="text-sm text-gray-500">Legislative performance and status report.</p>
+                </div>
+                
+                <div class="flex items-center gap-3 bg-white p-1.5 rounded-xl border shadow-sm">
+                    <div class="px-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-r pr-4">
+                        <Filter class="w-4 h-4" /> Filters
+                    </div>
+                    
+                    <select v-model="selectedYear" class="border-0 bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pr-8">
+                        <option value="all">All Years</option>
+                        <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
+                    </select>
+
+                    <select v-model="selectedActive" class="border-0 border-l bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pl-4 pr-8">
+                        <option value="all">All Status</option>
+                        <option value="active">Active Only</option>
+                        <option value="inactive">Inactive Only</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 
                 <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Total E.O.s</p>
+                        <p class="text-sm font-medium text-gray-500">Filtered E.O.s</p>
                         <div class="rounded-full bg-blue-50 p-2 text-blue-600">
                             <FileText class="h-4 w-4" />
                         </div>
@@ -77,7 +123,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 
                 <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Total Ordinances</p>
+                        <p class="text-sm font-medium text-gray-500">Filtered Ordinances</p>
                         <div class="rounded-full bg-indigo-50 p-2 text-indigo-600">
                             <Gavel class="h-4 w-4" />
                         </div>
@@ -90,14 +136,16 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 
                 <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Output {{ chart.year }}</p>
+                        <p class="text-sm font-medium text-gray-500">Total Output</p>
                         <div class="rounded-full bg-green-50 p-2 text-green-600">
                             <ArrowUpRight class="h-4 w-4" />
                         </div>
                     </div>
                     <div class="mt-4">
                         <h3 class="text-2xl font-bold text-gray-900">{{ stats.issued_this_year }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Combined issuances</p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            {{ selectedYear === 'all' ? 'All time volume' : `Volume in ${selectedYear}` }}
+                        </p>
                     </div>
                 </div>
 
@@ -124,7 +172,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                             <p class="text-sm text-gray-500">Combined Volume for {{ chart.year }}</p>
                         </div>
                         <div class="rounded-lg bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600">
-                            Annual View
+                            Monthly View
                         </div>
                     </div>
                     <div class="h-[300px] w-full">
