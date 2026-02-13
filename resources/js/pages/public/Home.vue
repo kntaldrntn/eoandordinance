@@ -216,6 +216,18 @@ const getSponsors = (depts: any[]) => {
                                     <Paperclip class="w-4 h-4" />
                                     {{ item.implementing_rules.length }} IRR Attached
                                 </div>
+                                <div v-if="item.implementing_rules?.length > 0" class="w-full mt-2 pl-4 border-l-2 border-indigo-100">
+                                    <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Rules and Regulations:</p>
+                                    <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
+                                        <div class="flex items-center gap-2">
+                                            <FileText class="w-3 h-3 text-indigo-400" />
+                                            <span class="text-xs text-gray-600">{{ irr.status }} <span class="text-gray-400">({{ irr.lead_office?.name || 'Lead Office' }})</span></span>
+                                        </div>
+                                        <a :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline">
+                                            <Download class="w-3 h-3" /> Download
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="mt-4">
