@@ -23,9 +23,10 @@ import {
     ScrollText, 
     Briefcase, 
     Activity, 
-    Users, 
+    UserCog, 
     Building2,
-    BookOpen 
+    BookOpen,
+    Users,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -59,6 +60,12 @@ const mainNavItems = computed(() => {
         {
             title: 'User Management',
             href: route('users.index'),
+            icon: UserCog,
+            roles: ['system_admin']
+        },
+        {
+            title: 'Employee Management',
+            href: route('employees.index'),
             icon: Users,
             roles: ['system_admin']
         },
