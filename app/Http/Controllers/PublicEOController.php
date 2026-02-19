@@ -18,7 +18,7 @@ class PublicEOController extends Controller
         // Common function to filter IRRs (Restored Logic)
         $irrFilter = function($q) {
             $q->whereIn('status', ['Approved', 'Implemented'])
-              ->with('leadOffice'); // Load the nested relationship here
+              ->with('leadOffice'); 
         };
 
         if ($type === 'ordinance') {
@@ -26,7 +26,7 @@ class PublicEOController extends Controller
             $query = Ordinance::with([
                 'status', 
                 'departments',                  
-                'implementingRules' => $irrFilter, // <--- APPLIED HERE
+                'implementingRules' => $irrFilter, 
                 'parentOrdinance', 
                 'amendments'
             ]);
@@ -42,14 +42,15 @@ class PublicEOController extends Controller
                 $query->whereYear('date_enacted', $year);
             }
             
-            $query->orderBy('date_enacted', 'desc');
+            // ADDED: Secondary sort by ID descending so newest encoded on the same date appears first
+            $query->orderBy('date_enacted', 'desc')->orderBy('id', 'desc');
 
         } else {
             // --- EXECUTIVE ORDER LOGIC ---
             $query = ExecutiveOrder::with([
                 'status', 
                 'departments', 
-                'implementingRules' => $irrFilter, // <--- APPLIED HERE
+                'implementingRules' => $irrFilter, 
                 'parentEO', 
                 'amendments'
             ]);
@@ -65,7 +66,8 @@ class PublicEOController extends Controller
                 $query->whereYear('date_issued', $year);
             }
             
-            $query->orderBy('date_issued', 'desc');
+            // ADDED: Secondary sort by ID descending so newest encoded on the same date appears first
+            $query->orderBy('date_issued', 'desc')->orderBy('id', 'desc');
         }
 
         // Filter: Only show finalized EOs/Ordinances
