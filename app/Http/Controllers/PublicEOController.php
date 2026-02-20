@@ -14,6 +14,7 @@ class PublicEOController extends Controller
         $type = $request->input('type', 'eo'); 
         $search = $request->search;
         $year = $request->year;
+        $isActive = $request->is_active; // <--- NEW: Capture the filter
 
         // Common function to filter IRRs (Restored Logic)
         $irrFilter = function($q) {
@@ -41,8 +42,12 @@ class PublicEOController extends Controller
             if ($year) {
                 $query->whereYear('date_enacted', $year);
             }
+
+            // --- NEW: Apply Active Filter ---
+            if ($isActive && $isActive !== 'all') {
+                $query->where('is_active', $isActive === 'active' ? 1 : 0);
+            }
             
-            // ADDED: Secondary sort by ID descending so newest encoded on the same date appears first
             $query->orderBy('date_enacted', 'desc')->orderBy('id', 'desc');
 
         } else {
@@ -65,8 +70,12 @@ class PublicEOController extends Controller
             if ($year) {
                 $query->whereYear('date_issued', $year);
             }
+
+            // --- NEW: Apply Active Filter ---
+            if ($isActive && $isActive !== 'all') {
+                $query->where('is_active', $isActive === 'active' ? 1 : 0);
+            }
             
-            // ADDED: Secondary sort by ID descending so newest encoded on the same date appears first
             $query->orderBy('date_issued', 'desc')->orderBy('id', 'desc');
         }
 
@@ -88,7 +97,7 @@ class PublicEOController extends Controller
 
         return Inertia::render('public/Home', [
             'records' => $query->paginate(12)->withQueryString(),
-            'filters' => $request->only(['search', 'year', 'type']),
+            'filters' => $request->only(['search', 'year', 'type', 'is_active']), // <--- UPDATED
             'years' => $years,
             'activeType' => $type, 
             'stats' => $stats,

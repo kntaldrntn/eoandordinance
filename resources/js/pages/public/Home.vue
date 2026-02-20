@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { 
     Search, Calendar, Download, Building2, Paperclip, 
     AlertCircle, Link as LinkIcon, UserCheck, Gavel, ChevronDown, ChevronUp,
-    CheckCircle2, XCircle // <--- Added these icons
+    CheckCircle2, XCircle
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
@@ -14,13 +14,14 @@ const props = defineProps<{
         data: Array<any>;
         links: Array<any>;
     };
-    filters: { search?: string; year?: string; type?: string };
+    filters: { search?: string; year?: string; type?: string; is_active?: string }; // Added is_active
     years: number[];
     activeType: string;
 }>();
 
 const search = ref(props.filters.search || '');
 const year = ref(props.filters.year || '');
+const isActive = ref(props.filters.is_active || 'all'); // <--- NEW REF
 const activeTab = ref(props.activeType || 'eo');
 const expandedId = ref<number | null>(null);
 
@@ -29,6 +30,7 @@ const updateParams = debounce(() => {
     router.get('/', { 
         search: search.value, 
         year: year.value,
+        is_active: isActive.value, // <--- Added to router
         type: activeTab.value 
     }, { preserveState: true, preserveScroll: true });
 }, 300);
@@ -37,6 +39,7 @@ const switchTab = (type: string) => {
     activeTab.value = type;
     search.value = ''; 
     year.value = '';
+    isActive.value = 'all'; // Reset filter on tab switch
     updateParams();
 };
 
@@ -55,12 +58,11 @@ const getStatusColor = (statusName: string) => {
     }
 };
 
-// 1. UPDATED: Dimming Logic uses is_active boolean
 const getCardClass = (isActive: boolean) => {
     if (!isActive) {
         return 'opacity-75 grayscale-[0.5] hover:grayscale-0 hover:opacity-100 bg-gray-50/50'; 
     }
-    return 'bg-white'; // Active items stay bright
+    return 'bg-white'; 
 };
 
 // --- DATA HELPERS ---
@@ -103,18 +105,28 @@ const getSponsors = (depts: any[]) => {
 
         <div class="bg-white border-b border-gray-200 pt-10 pb-0">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="max-w-3xl mb-8">
+                <div class="max-w-4xl mb-8">
                     <h2 class="text-3xl font-bold text-gray-900 mb-4">Find Laws & Issuances</h2>
                     <div class="flex flex-col md:flex-row gap-4">
                         <div class="relative flex-1">
                             <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                             <input v-model="search" @input="updateParams" type="text" placeholder="Search Number, Title, or Keywords..." class="w-full pl-12 pr-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base" />
                         </div>
-                        <div class="w-full md:w-48">
-                            <select v-model="year" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base cursor-pointer">
-                                <option value="">All Years</option>
-                                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-                            </select>
+                        
+                        <div class="flex gap-4 w-full md:w-auto">
+                            <div class="w-full md:w-40">
+                                <select v-model="year" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base cursor-pointer">
+                                    <option value="">All Years</option>
+                                    <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                                </select>
+                            </div>
+                            <div class="w-full md:w-40">
+                                <select v-model="isActive" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base cursor-pointer">
+                                    <option value="all">All Status</option>
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -212,21 +224,26 @@ const getSponsors = (depts: any[]) => {
                                     <UserCheck class="w-4 h-4" />
                                     {{ getSponsors(item.departments) }}
                                 </div>
+                                
                                 <div v-if="item.implementing_rules?.length > 0" class="flex items-center gap-1.5 text-indigo-600 font-medium">
                                     <Paperclip class="w-4 h-4" />
                                     {{ item.implementing_rules.length }} IRR Attached
                                 </div>
-                                <div v-if="item.implementing_rules?.length > 0" class="w-full mt-2 pl-4 border-l-2 border-indigo-100">
-                                    <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Rules and Regulations:</p>
-                                    <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
-                                        <div class="flex items-center gap-2">
-                                            <FileText class="w-3 h-3 text-indigo-400" />
-                                            <span class="text-xs text-gray-600">{{ irr.status }} <span class="text-gray-400">({{ irr.lead_office?.name || 'Lead Office' }})</span></span>
-                                        </div>
-                                        <a :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline">
-                                            <Download class="w-3 h-3" /> Download
-                                        </a>
+                            </div>
+
+                            <div v-if="item.implementing_rules?.length > 0" class="w-full mt-2 pl-4 border-l-2 border-indigo-100">
+                                <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
+                                <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
+                                    <div class="flex items-center gap-2">
+                                        <FileText class="w-3 h-3 text-indigo-400" />
+                                        <span class="text-xs text-gray-600">
+                                            {{ irr.status }} 
+                                            <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
+                                        </span>
                                     </div>
+                                    <a :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline hover:text-indigo-800 transition-colors">
+                                        <Download class="w-3 h-3" /> Download
+                                    </a>
                                 </div>
                             </div>
 
