@@ -97,8 +97,7 @@ const getSponsors = (depts: any[]) => {
                         <p class="text-xs text-gray-500 font-medium tracking-wide mt-0.5">PUBLIC RECORDS PORTAL</p>
                     </div>
                 </div>
-                <Link href="/login" class="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors">
-                    Staff Login &rarr;
+                <Link href="/login" class="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"> Login &rarr;
                 </Link>
             </div>
         </header>

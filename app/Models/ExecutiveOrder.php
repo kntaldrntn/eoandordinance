@@ -9,17 +9,17 @@ use Illuminate\Support\Facades\Storage;
 class ExecutiveOrder extends Model
 {
     use RecordsActivity;
+    
     protected $guarded = [];
     
     protected $appends = ['file_url', 'public_timeline'];
 
-    // 1. ADDED: Cast is_active to boolean
     protected $casts = [
         'is_active' => 'boolean',
-        'date_issued' => 'datetime', // Good practice to cast dates too
+        'date_issued' => 'datetime',
+        'committee_details' => 'array', 
     ];
 
-    // 2. ADDED: Scope for easy filtering (e.g., ExecutiveOrder::active()->get())
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -73,7 +73,7 @@ class ExecutiveOrder extends Model
             'file_url' => null,
         ]);
 
-        // B. Audit Logs (Updated to include is_active changes)
+        // B. Audit Logs
         $audits = $this->audits()
             ->where('action', '!=', 'Created') 
             ->latest()
@@ -104,7 +104,7 @@ class ExecutiveOrder extends Model
                     ];
                 }
 
-                // 3. ADDED: Active/Inactive Toggle History
+                // Active/Inactive Toggle History
                 if (isset($audit->new_values['is_active'])) {
                     $isActive = $audit->new_values['is_active'];
                     return [
@@ -113,6 +113,18 @@ class ExecutiveOrder extends Model
                         'time' => $audit->created_at->format('h:i A'),
                         'action' => $isActive ? 'Marked as Active' : 'Marked as Inactive',
                         'details' => [['text' => $isActive ? 'Record is now effective.' : 'Record is no longer in effect.']],
+                        'file_url' => null,
+                    ];
+                }
+
+                // Committee Details Updates
+                if (isset($audit->new_values['committee_details'])) {
+                    return [
+                        'date' => $audit->created_at,
+                        'date_display' => $audit->created_at->format('M d, Y'),
+                        'time' => $audit->created_at->format('h:i A'),
+                        'action' => 'Committees / Programs Updated',
+                        'details' => [['text' => 'Structure or members were modified.']],
                         'file_url' => null,
                     ];
                 }

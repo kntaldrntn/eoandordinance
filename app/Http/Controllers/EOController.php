@@ -13,14 +13,13 @@ class EOController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Fetch EOs with relationships AND audits.user (History)
         $query = ExecutiveOrder::with([
             'status', 
             'departments', 
             'parentEO', 
             'implementingRules.leadOffice', 
             'amendments', 
-            'audits.user' // <--- Essential for the History Tab
+            'audits.user'
         ]);
 
         if ($request->filled('search')) {
@@ -64,11 +63,11 @@ class EOController extends Controller
             'file' => 'required|file|mimes:pdf|max:10240',
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
-            'is_active' => 'boolean', // <--- ADDED VALIDATION
+            'is_active' => 'boolean', 
+            'committee_details' => 'nullable|array', 
         ]);
 
         DB::transaction(function () use ($request, $validated) {
-            // 1. AUTOMATION: Update Parent Status
             if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
                 $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $action = $validated['relationship_type'];
@@ -87,10 +86,8 @@ class EOController extends Controller
                 }
             }
 
-            // 2. Handle File
             $path = $request->file('file')->store('eos', 'public');
 
-            // 3. Create
             $eo = ExecutiveOrder::create([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
@@ -102,11 +99,11 @@ class EOController extends Controller
                 'legal_basis' => $validated['legal_basis'],
                 'issuing_authority' => 'City Mayor',
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'] ?? true, // <--- ADDED SAVE (Default true)
+                'is_active' => $validated['is_active'] ?? true, 
+                'committee_details' => $validated['committee_details'] ?? null,
                 'file_path' => $path,
             ]);
 
-            // 4. Attach Departments
             $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
 
             if (!empty($validated['support_office_ids'])) {
@@ -138,12 +135,12 @@ class EOController extends Controller
             'file' => 'nullable|file|mimes:pdf|max:10240',
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
             'remarks' => 'nullable|string',
-            'is_active' => 'boolean', // <--- ADDED VALIDATION
+            'is_active' => 'boolean',
+            'committee_details' => 'nullable|array', 
         ]);
 
         DB::transaction(function () use ($request, $validated, $eo) {
             
-            // 1. AUTOMATION: Update Parent Status on Edit
             if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
                 if ($eo->amends_eo_id != $validated['amends_eo_id'] || $eo->relationship_type != $validated['relationship_type']) {
                     
@@ -160,7 +157,6 @@ class EOController extends Controller
                 }
             }
 
-            // 2. Handle File Upload
             if ($request->hasFile('file')) {
                 if ($eo->file_path && Storage::disk('public')->exists($eo->file_path)) {
                     Storage::disk('public')->delete($eo->file_path);
@@ -168,7 +164,6 @@ class EOController extends Controller
                 $eo->file_path = $request->file('file')->store('eos', 'public');
             }
 
-            // 3. Update EO Record
             $eo->update([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
@@ -179,10 +174,10 @@ class EOController extends Controller
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'], // <--- ADDED UPDATE
+                'is_active' => $validated['is_active'], 
+                'committee_details' => $validated['committee_details'] ?? null, 
             ]);
 
-            // 4. Sync Departments
             $eo->departments()->detach();
             $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
 
