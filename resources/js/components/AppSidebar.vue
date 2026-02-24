@@ -37,7 +37,8 @@ const userRole = computed(() => {
     return page.props.auth.role || page.props.auth.user?.role || 'guest';
 });
 
-const mainNavItems = computed(() => {
+// --- PLATFORM LINKS ---
+const platformItems = computed(() => {
     const menuConfig = [
         {
             title: 'Dashboard',
@@ -57,6 +58,13 @@ const mainNavItems = computed(() => {
             icon: ScrollText,
             roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
+    ];
+    return menuConfig.filter(item => item.roles.includes(userRole.value));
+});
+
+// --- SETTINGS LINKS ---
+const settingsItems = computed(() => {
+    const menuConfig = [
         {
             title: 'User Management',
             href: route('users.index'),
@@ -82,8 +90,6 @@ const mainNavItems = computed(() => {
             roles: ['system_admin']
         }
     ];
-
-    // Filter based on role
     return menuConfig.filter(item => item.roles.includes(userRole.value));
 });
 
@@ -111,7 +117,7 @@ const footerNavItems: NavItem[] = [
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="mainNavItems" />
+            <NavMain :platform-items="platformItems" :settings-items="settingsItems" />
         </SidebarContent>
 
         <SidebarFooter>

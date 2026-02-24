@@ -3,7 +3,8 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
-    BookOpen, Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users
+    BookOpen, Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users,
+    Pencil
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
@@ -321,7 +322,9 @@ const getLeadOffice = (depts: any[]) => {
                                             </button>
                                             <div class="h-4 w-px bg-gray-200 mx-1"></div>
                                             <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF"><Download class="w-4 h-4" /></a>
-                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(eo)" class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title="Edit"><Plus class="w-4 h-4 rotate-45" /></button>
+                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(eo)" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                                                <Pencil class="w-4 h-4" />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
