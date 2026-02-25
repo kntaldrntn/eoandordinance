@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ExecutiveOrder;
 use App\Models\Ordinance; 
+use App\Models\Department;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,16 +15,14 @@ class PublicEOController extends Controller
         $type = $request->input('type', 'eo'); 
         $search = $request->search;
         $year = $request->year;
-        $isActive = $request->is_active; // <--- NEW: Capture the filter
+        $isActive = $request->is_active;
 
-        // Common function to filter IRRs (Restored Logic)
         $irrFilter = function($q) {
             $q->whereIn('status', ['Approved', 'Implemented'])
               ->with('leadOffice'); 
         };
 
         if ($type === 'ordinance') {
-            // --- ORDINANCE LOGIC ---
             $query = Ordinance::with([
                 'status', 
                 'departments',                  
@@ -43,7 +42,6 @@ class PublicEOController extends Controller
                 $query->whereYear('date_enacted', $year);
             }
 
-            // --- NEW: Apply Active Filter ---
             if ($isActive && $isActive !== 'all') {
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
@@ -51,7 +49,6 @@ class PublicEOController extends Controller
             $query->orderBy('date_enacted', 'desc')->orderBy('id', 'desc');
 
         } else {
-            // --- EXECUTIVE ORDER LOGIC ---
             $query = ExecutiveOrder::with([
                 'status', 
                 'departments', 
@@ -71,7 +68,6 @@ class PublicEOController extends Controller
                 $query->whereYear('date_issued', $year);
             }
 
-            // --- NEW: Apply Active Filter ---
             if ($isActive && $isActive !== 'all') {
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
@@ -79,12 +75,10 @@ class PublicEOController extends Controller
             $query->orderBy('date_issued', 'desc')->orderBy('id', 'desc');
         }
 
-        // Filter: Only show finalized EOs/Ordinances
         $query->whereHas('status', function($q) {
             $q->where('name', '!=', 'Draft');
         });
 
-        // 3. Stats for the Dashboard
         $stats = [
             'total_eos' => ExecutiveOrder::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
             'total_ordinances' => Ordinance::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
@@ -97,7 +91,8 @@ class PublicEOController extends Controller
 
         return Inertia::render('public/Home', [
             'records' => $query->paginate(12)->withQueryString(),
-            'filters' => $request->only(['search', 'year', 'type', 'is_active']), // <--- UPDATED
+            'departments' => Department::select('id', 'name')->get(), // <--- ADDED to resolve IDs to Names
+            'filters' => $request->only(['search', 'year', 'type', 'is_active']),
             'years' => $years,
             'activeType' => $type, 
             'stats' => $stats,

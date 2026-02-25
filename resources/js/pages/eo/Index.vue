@@ -459,7 +459,7 @@ const getLeadOffice = (depts: any[]) => {
                                             <input v-model="form.committee_details.council.chairman" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2" placeholder="Name or Title" />
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Chairman(s)</label>
+                                            <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Chairman</label>
                                             <input v-model="form.committee_details.council.co_chairmans" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2" placeholder="Names (comma separated)" />
                                         </div>
                                         <div>

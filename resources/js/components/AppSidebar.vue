@@ -66,15 +66,15 @@ const platformItems = computed(() => {
 const settingsItems = computed(() => {
     const menuConfig = [
         {
-            title: 'User Management',
-            href: route('users.index'),
-            icon: UserCog,
-            roles: ['system_admin']
-        },
-        {
             title: 'Employee Management',
             href: route('employees.index'),
             icon: Users,
+            roles: ['system_admin']
+        },
+        {
+            title: 'Departments Management',
+            href: route('departments.index'),
+            icon: Building2,
             roles: ['system_admin']
         },
         {
@@ -84,11 +84,11 @@ const settingsItems = computed(() => {
             roles: ['system_admin']
         },
         {
-            title: 'Departments',
-            href: route('departments.index'),
-            icon: Building2,
+            title: 'User Management',
+            href: route('users.index'),
+            icon: UserCog,
             roles: ['system_admin']
-        }
+        },
     ];
     return menuConfig.filter(item => item.roles.includes(userRole.value));
 });

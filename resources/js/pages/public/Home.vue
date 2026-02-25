@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { 
     Search, Calendar, Download, Building2, Paperclip, 
     AlertCircle, Link as LinkIcon, UserCheck, Gavel, ChevronDown, ChevronUp,
-    CheckCircle2, XCircle
+    CheckCircle2, XCircle, Users // <--- Added Users icon
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
@@ -14,23 +14,40 @@ const props = defineProps<{
         data: Array<any>;
         links: Array<any>;
     };
-    filters: { search?: string; year?: string; type?: string; is_active?: string }; // Added is_active
+    departments: Array<{ id: number; name: string }>; // <--- Added departments prop
+    filters: { search?: string; year?: string; type?: string; is_active?: string }; 
     years: number[];
     activeType: string;
 }>();
 
 const search = ref(props.filters.search || '');
 const year = ref(props.filters.year || '');
-const isActive = ref(props.filters.is_active || 'all'); // <--- NEW REF
+const isActive = ref(props.filters.is_active || 'all'); 
 const activeTab = ref(props.activeType || 'eo');
 const expandedId = ref<number | null>(null);
+
+// --- MODAL STATE ---
+const showCommitteeModal = ref(false);
+const selectedCommittee = ref<any>(null);
+
+const openCommitteeModal = (item: any) => {
+    selectedCommittee.value = item;
+    showCommitteeModal.value = true;
+};
+
+// Map Department ID to Name for Programs
+const getDeptName = (id: string | number) => {
+    if (!id) return 'None Assigned';
+    const dept = props.departments.find(d => d.id == id);
+    return dept ? dept.name : 'Unknown Office';
+};
 
 // --- LOGIC ---
 const updateParams = debounce(() => {
     router.get('/', { 
         search: search.value, 
         year: year.value,
-        is_active: isActive.value, // <--- Added to router
+        is_active: isActive.value, 
         type: activeTab.value 
     }, { preserveState: true, preserveScroll: true });
 }, 300);
@@ -39,7 +56,7 @@ const switchTab = (type: string) => {
     activeTab.value = type;
     search.value = ''; 
     year.value = '';
-    isActive.value = 'all'; // Reset filter on tab switch
+    isActive.value = 'all'; 
     updateParams();
 };
 
@@ -89,7 +106,7 @@ const getSponsors = (depts: any[]) => {
         <header class="bg-white shadow-sm border-b sticky top-0 z-20">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <div class="bg-indigo-600 p-2 rounded-lg shadow-sm">
+                    <div class="bg-blue-600 p-2 rounded-lg shadow-sm">
                         <Gavel class="w-6 h-6 text-white" />
                     </div>
                     <div>
@@ -97,8 +114,7 @@ const getSponsors = (depts: any[]) => {
                         <p class="text-xs text-gray-500 font-medium tracking-wide mt-0.5">PUBLIC RECORDS PORTAL</p>
                     </div>
                 </div>
-                <Link href="/login" class="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"> Login
-                </Link>
+                <Link href="/login" class="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors"> Login </Link>
             </div>
         </header>
 
@@ -109,18 +125,18 @@ const getSponsors = (depts: any[]) => {
                     <div class="flex flex-col md:flex-row gap-4">
                         <div class="relative flex-1">
                             <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                            <input v-model="search" @input="updateParams" type="text" placeholder="Search Number, Title, or Keywords..." class="w-full pl-12 pr-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base" />
+                            <input v-model="search" @input="updateParams" type="text" placeholder="Search Number, Title, or Keywords..." class="w-full pl-12 pr-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 text-base" />
                         </div>
                         
                         <div class="flex gap-4 w-full md:w-auto">
                             <div class="w-full md:w-40">
-                                <select v-model="year" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base cursor-pointer">
+                                <select v-model="year" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 text-base cursor-pointer">
                                     <option value="">All Years</option>
                                     <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
                                 </select>
                             </div>
                             <div class="w-full md:w-40">
-                                <select v-model="isActive" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 text-base cursor-pointer">
+                                <select v-model="isActive" @change="updateParams" class="w-full h-full px-4 py-4 rounded-xl border border-gray-300 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 text-base cursor-pointer">
                                     <option value="all">All Status</option>
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
@@ -131,8 +147,8 @@ const getSponsors = (depts: any[]) => {
                 </div>
 
                 <div class="flex gap-8">
-                    <button @click="switchTab('eo')" class="pb-4 px-2 text-sm font-bold uppercase tracking-wide border-b-2 transition-all" :class="activeTab === 'eo' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">Executive Orders</button>
-                    <button @click="switchTab('ordinance')" class="pb-4 px-2 text-sm font-bold uppercase tracking-wide border-b-2 transition-all" :class="activeTab === 'ordinance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">City Ordinances</button>
+                    <button @click="switchTab('eo')" class="pb-4 px-2 text-sm font-bold uppercase tracking-wide border-b-2 transition-all" :class="activeTab === 'eo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'">Executive Orders</button>
+                    <button @click="switchTab('ordinance')" class="pb-4 px-2 text-sm font-bold uppercase tracking-wide border-b-2 transition-all" :class="activeTab === 'ordinance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'">City Ordinances</button>
                 </div>
             </div>
         </div>
@@ -173,16 +189,16 @@ const getSponsors = (depts: any[]) => {
                                 </span>
                             </div>
 
-                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors mb-3 leading-snug">
+                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-3 leading-snug">
                                 {{ item.title }}
                             </h3>
 
                             <div class="space-y-3 mb-4">
-                                <div v-if="item.parent_e_o || item.parent_ordinance" class="text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-indigo-800">
+                                <div v-if="item.parent_e_o || item.parent_ordinance" class="text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-800">
                                     <div class="flex items-start gap-2">
-                                        <LinkIcon class="w-4 h-4 mt-0.5 shrink-0 text-indigo-500" />
+                                        <LinkIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
                                         <div>
-                                            <p class="font-semibold text-xs uppercase tracking-wide text-indigo-600 mb-0.5">Changes / Amends:</p>
+                                            <p class="font-semibold text-xs uppercase tracking-wide text-blue-600 mb-0.5">Changes / Amends:</p>
                                             <p class="font-medium">
                                                 {{ activeTab === 'eo' ? item.parent_e_o?.eo_number : item.parent_ordinance?.ordinance_number }}
                                             </p>
@@ -191,7 +207,7 @@ const getSponsors = (depts: any[]) => {
                                     <a v-if="activeTab === 'eo' ? item.parent_e_o?.file_url : item.parent_ordinance?.file_url" 
                                        :href="activeTab === 'eo' ? item.parent_e_o?.file_url : item.parent_ordinance?.file_url" 
                                        target="_blank"
-                                       class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-indigo-200 rounded text-xs font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors"
+                                       class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-blue-200 rounded text-xs font-bold text-blue-600 hover:bg-blue-600 hover:text-white transition-colors"
                                     >
                                         <Download class="w-3 h-3" /> View Parent
                                     </a>
@@ -224,43 +240,36 @@ const getSponsors = (depts: any[]) => {
                                     {{ getSponsors(item.departments) }}
                                 </div>
                                 
-                                <div v-if="item.implementing_rules?.length > 0" class="flex items-center gap-1.5 text-indigo-600 font-medium">
+                                <div v-if="item.implementing_rules?.length > 0" class="flex items-center gap-1.5 text-blue-600 font-medium">
                                     <Paperclip class="w-4 h-4" />
                                     {{ item.implementing_rules.length }} IRR Attached
                                 </div>
                             </div>
 
-                            <div v-if="item.implementing_rules?.length > 0" class="w-full mt-2 pl-4 border-l-2 border-indigo-100">
-                                <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
-                                <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
-                                    <div class="flex items-center gap-2">
-                                        <FileText class="w-3 h-3 text-indigo-400" />
-                                        <span class="text-xs text-gray-600">
-                                            {{ irr.status }} 
-                                            <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
-                                        </span>
-                                    </div>
-                                    <a :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline hover:text-indigo-800 transition-colors">
-                                        <Download class="w-3 h-3" /> Download
-                                    </a>
-                                </div>
-                            </div>
-
-                            <div class="mt-4">
-                                <button @click="toggleHistory(item.id)" class="text-xs font-bold text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                            <div class="flex flex-wrap gap-4 mt-5">
+                                <button @click="toggleHistory(item.id)" class="text-xs font-bold text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors">
                                     <component :is="expandedId === item.id ? ChevronUp : ChevronDown" class="w-3 h-3" />
-                                    {{ expandedId === item.id ? 'Hide History' : 'View History & Transparency Log' }}
+                                    {{ expandedId === item.id ? 'Hide History' : 'View History & Timeline' }}
                                 </button>
                                 
-                                <div v-show="expandedId === item.id">
-                                    <TransparencyTimeline :timeline="item.public_timeline" />
-                                </div>
+                                <button 
+                                    v-if="activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none'" 
+                                    @click="openCommitteeModal(item)" 
+                                    class="text-xs font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                                >
+                                    <Users class="w-3.5 h-3.5" /> 
+                                    View {{ item.committee_details.type === 'council' ? 'Committee Members' : 'Program Details' }}
+                                </button>
+                            </div>
+
+                            <div v-show="expandedId === item.id" class="mt-4">
+                                <TransparencyTimeline :timeline="item.public_timeline" />
                             </div>
 
                         </div>
 
                         <div class="mt-4 md:mt-0 md:self-start">
-                            <a :href="item.file_url" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm">
+                            <a :href="item.file_url" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm">
                                 <Download class="w-4 h-4" />
                                 <span class="hidden md:inline">PDF</span>
                             </a>
@@ -276,7 +285,7 @@ const getSponsors = (depts: any[]) => {
             </div>
 
             <div v-if="records.links.length > 3" class="mt-8 flex justify-center gap-1">
-                <Link v-for="(link, i) in records.links" :key="i" :href="link.url || '#'" class="px-4 py-2 rounded-lg text-sm font-medium transition-colors" :class="[link.active ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200', !link.url && 'opacity-50 cursor-not-allowed']" v-html="link.label" />
+                <Link v-for="(link, i) in records.links" :key="i" :href="link.url || '#'" class="px-4 py-2 rounded-lg text-sm font-medium transition-colors" :class="[link.active ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200', !link.url && 'opacity-50 cursor-not-allowed']" v-html="link.label" />
             </div>
         </main>
 
@@ -285,5 +294,118 @@ const getSponsors = (depts: any[]) => {
                 &copy; {{ new Date().getFullYear() }} City Government Records Management System.
             </div>
         </footer>
+
+        <Transition name="fade">
+            <div v-if="showCommitteeModal && selectedCommittee" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+                <div class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                    
+                    <div class="bg-blue-600 px-6 py-4 flex items-center justify-between shrink-0">
+                        <div>
+                            <h3 class="text-white font-bold text-lg flex items-center gap-2">
+                                <Users class="w-5 h-5 text-blue-200" />
+                                {{ selectedCommittee.committee_details.type === 'council' ? 'Council & Committee Structure' : 'Program Implementation Details' }}
+                            </h3>
+                            <p class="text-blue-200 text-xs mt-0.5">{{ selectedCommittee.eo_number }}</p>
+                        </div>
+                        <button @click="showCommitteeModal = false" class="text-blue-200 hover:text-white bg-blue-700/50 hover:bg-blue-700 rounded-full p-1.5 transition">
+                            <XCircle class="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div class="p-6 overflow-y-auto bg-gray-50/50">
+                        
+                        <div v-if="selectedCommittee.committee_details.type === 'council'" class="space-y-6">
+                            
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Leadership</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div v-if="selectedCommittee.committee_details.council.chairman">
+                                        <p class="text-xs text-gray-500 font-medium">Chairman</p>
+                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.chairman }}</p>
+                                    </div>
+                                    <div v-if="selectedCommittee.committee_details.council.co_chairmans">
+                                        <p class="text-xs text-gray-500 font-medium">Co-Chairman</p>
+                                        <p class="text-sm font-bold text-gray-900 whitespace-pre-wrap">{{ selectedCommittee.committee_details.council.co_chairmans }}</p>
+                                    </div>
+                                    <div v-if="selectedCommittee.committee_details.council.vice_chairman">
+                                        <p class="text-xs text-gray-500 font-medium">Vice Chairman</p>
+                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.vice_chairman }}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.internal_members">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Members</h4>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.internal_members }}</p>
+                                </div>
+                                <div class="space-y-4">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.external_members">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.external_members }}</p>
+                                    </div>
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.secretariat">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Secretariat</h4>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat }}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="selectedCommittee.committee_details.council.twg_head || selectedCommittee.committee_details.council.twg_internal_members" class="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                <h4 class="text-xs font-bold text-blue-800 uppercase tracking-widest mb-4 border-b border-blue-100 pb-2">Technical Working Group (TWG)</h4>
+                                
+                                <div class="mb-4" v-if="selectedCommittee.committee_details.council.twg_head">
+                                    <p class="text-xs text-blue-600 font-medium">TWG Head</p>
+                                    <p class="text-sm font-bold text-blue-900">{{ selectedCommittee.committee_details.council.twg_head }}</p>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div v-if="selectedCommittee.committee_details.council.twg_internal_members">
+                                        <p class="text-xs text-blue-600 font-medium mb-1">TWG Internal Members</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_internal_members }}</p>
+                                    </div>
+                                    <div v-if="selectedCommittee.committee_details.council.twg_external_members">
+                                        <p class="text-xs text-blue-600 font-medium mb-1">TWG External Members</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_external_members }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="selectedCommittee.committee_details.type === 'program'" class="space-y-6">
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                    <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
+                                    <p class="text-base font-bold text-blue-900">{{ getDeptName(selectedCommittee.committee_details.program.lead_office_id) }}</p>
+                                </div>
+                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Co-Lead Office</h4>
+                                    <p class="text-sm font-bold text-gray-800">{{ getDeptName(selectedCommittee.committee_details.program.co_lead_office_id) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.internal_members">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.internal_members }}</p>
+                                </div>
+                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.external_members">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.external_members }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
     </div>
 </template>
+
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
