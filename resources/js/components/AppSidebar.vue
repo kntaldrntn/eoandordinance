@@ -72,6 +72,12 @@ const settingsItems = computed(() => {
             roles: ['system_admin']
         },
         {
+            title: 'External Directory',
+            href: route('external-members.index'),
+            icon: Users,
+            roles: ['system_admin']
+        },
+        {
             title: 'Departments Management',
             href: route('departments.index'),
             icon: Building2,
