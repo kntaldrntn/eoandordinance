@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\ExecutiveOrder;
+use App\Models\CityEmployee;
+use App\Models\ExternalMember;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -34,9 +36,29 @@ class EOController extends Controller
                      ->paginate(10)
                      ->withQueryString();
 
+        // --- NEW: Combine Internal and External members into a single suggestive list ---
+        $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
+            return [
+                'name' => $e->full_name,
+                'title' => ($e->position ?? 'Staff') . ($e->department ? ' (' . $e->department->name . ')' : ''),
+                'type' => 'Internal'
+            ];
+        });
+
+        $externals = ExternalMember::where('is_active', true)->get()->map(function($e) {
+            return [
+                'name' => $e->full_name,
+                'title' => $e->position . ($e->organization ? ' - ' . $e->organization : ''),
+                'type' => 'External'
+            ];
+        });
+
+        $peopleRegistry = $employees->concat($externals)->sortBy('name')->values()->toArray();
+
         return Inertia::render('eo/Index', [
             'eos' => $eos,
             'departments' => Department::orderBy('name')->get(),
+            'peopleRegistry' => $peopleRegistry, // <--- Passed to Frontend
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
             'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title')->orderBy('eo_number', 'desc')->get(),
             'filters' => $request->only(['search']),
