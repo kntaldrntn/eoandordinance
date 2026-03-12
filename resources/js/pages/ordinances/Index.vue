@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
-    BookOpen, Download, AlertCircle, UserCheck, Clock, Trash2, XCircle, Info, CheckCircle2
+    BookOpen, Download, AlertCircle, UserCheck, Clock, Trash2, XCircle, Info, CheckCircle2, Pencil
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
@@ -393,7 +393,9 @@ const getSponsors = (depts: any[]) => {
                                             </button>
                                             <div class="h-4 w-px bg-gray-200 mx-1"></div>
                                             <a v-if="ord.file_url" :href="ord.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF"><Download class="w-4 h-4" /></a>
-                                            <button v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'" @click="openEditDialog(ord)" class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title="Edit"><Plus class="w-4 h-4 rotate-45" /></button>
+                                            <button v-if="$page.props.auth.user.role === 'system_admin' || $page.props.auth.user.role === 'supervisor'"class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" @click="openEditDialog(ord)" title="Edit">
+                                            <Pencil class="h-4 w-4" />
+                                        </button>
                                         </div>
                                     </td>
                                 </tr>
