@@ -368,10 +368,15 @@ const getSponsors = (depts: any[]) => {
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 align-top">
-                                        <div class="text-gray-900 font-semibold leading-snug">{{ ord.title }}</div>
-                                        <div v-if="ord.parent_ordinance" class="mt-2 flex items-center gap-1 text-xs text-amber-700 font-bold bg-amber-50 px-2 py-1 rounded w-fit border border-amber-100 uppercase">
+                                        <div class="text-gray-900 font-semibold mb-2 leading-snug">{{ ord.title }}</div>
+                                        
+                                        <div v-if="ord.parent_ordinance" class="mb-2 flex items-center gap-1 text-xs text-amber-700 font-bold bg-amber-50 px-2 py-1 rounded w-fit border border-amber-100 uppercase">
                                             <AlertCircle class="w-3.5 h-3.5" />
                                             {{ ord.relationship_type }}: {{ ord.parent_ordinance.ordinance_number }}
+                                        </div>
+
+                                        <div v-if="ord.remarks" class="mt-2 pl-3 border-l-2 border-gray-300 bg-gray-50 py-1.5 pr-3 rounded-r">
+                                            <p class="text-xs text-gray-600 italic">"{{ ord.remarks }}"</p>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 text-xs text-gray-600 align-top">

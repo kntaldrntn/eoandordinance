@@ -355,21 +355,27 @@ const getLeadOffice = (depts: any[]) => {
             <div class="overflow-hidden rounded-xl border bg-white shadow-sm">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-700">
-                        <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
+                        <thead class="bg-gray-50 text-xs text-gray-600 uppercase border-b border-gray-200">
                             <tr>
-                                <th class="px-6 py-3 font-medium">EO Tracking</th>
-                                <th class="px-6 py-3 font-medium w-1/2">Subject & Legal Context</th>
-                                <th class="px-6 py-3 text-center font-medium">Actions</th>
+                                <th class="px-6 py-4 font-semibold">EO Tracking</th>
+                                <th class="px-6 py-4 font-semibold w-1/3">Subject Title</th>
+                                <th class="px-6 py-4 font-semibold">Lead Office</th>
+                                <th class="px-6 py-4 font-semibold">Status</th>
+                                <th class="px-6 py-4 text-center font-semibold">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <template v-if="isLoading">
                                 <tr v-for="n in 5" :key="n" class="animate-pulse">
-                                    <td colspan="3" class="px-6 py-4"><div class="h-4 bg-gray-100 rounded w-full"></div></td>
+                                    <td colspan="5" class="px-6 py-4"><div class="h-4 bg-gray-100 rounded w-full"></div></td>
                                 </tr>
                             </template>
+                            
                             <template v-else-if="eos.data.length > 0">
-                                <tr v-for="eo in eos.data" :key="eo.id" class="transition-colors border-l-4" :class="eo.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/60 border-red-400'">
+                                <tr v-for="eo in eos.data" :key="eo.id" 
+                                    class="transition-colors border-l-4" 
+                                    :class="eo.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/60 opacity-80 border-red-400'">
+                                    
                                     <td class="px-6 py-4 align-top">
                                         <div class="flex flex-col gap-1">
                                             <span class="font-mono font-bold text-blue-600 text-base">{{ eo.eo_number }}</span>
@@ -377,29 +383,43 @@ const getLeadOffice = (depts: any[]) => {
                                                 <span><span class="text-gray-400 font-medium">Issued:</span> {{ formatDate(eo.date_issued) }}</span>
                                                 <span><span class="text-gray-400 font-medium">Effective:</span> {{ formatDate(eo.effectivity_date) }}</span>
                                             </div>
-                                            <div v-if="!eo.is_active" class="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded bg-red-100 text-red-600 text-[10px] font-bold uppercase border border-red-200 mt-1">
+                                            <div v-if="!eo.is_active" class="mt-1 inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded bg-red-100 text-red-600 text-[10px] font-bold uppercase border border-red-200">
                                                 <XCircle class="w-3 h-3" /> Inactive
                                             </div>
-                                            <div class="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                                                <Building2 class="w-3 h-3" /> {{ getLeadOffice(eo.departments) }}
-                                            </div>
                                         </div>
                                     </td>
+
                                     <td class="px-6 py-4 align-top">
                                         <div class="text-gray-900 font-semibold mb-2 leading-snug">{{ eo.title }}</div>
-                                        <div v-if="eo.parent_e_o" class="p-2 bg-amber-50 rounded-lg border border-amber-100 text-xs mb-2">
-                                            <div class="flex items-center gap-1 text-amber-800 font-bold uppercase">
-                                                <AlertCircle class="w-3.5 h-3.5" /> 
-                                                {{ eo.relationship_type }}: {{ eo.parent_e_o.eo_number }}
-                                            </div>
-                                            <p v-if="eo.remarks" class="text-amber-700 mt-1 italic pl-5">"{{ eo.remarks }}"</p>
+                                        
+                                        <div v-if="eo.parent_e_o" class="mb-2 flex items-center gap-1 text-xs text-amber-700 font-bold bg-amber-50 px-2 py-1 rounded w-fit border border-amber-100 uppercase">
+                                            <AlertCircle class="w-3.5 h-3.5" /> 
+                                            {{ eo.relationship_type }}: {{ eo.parent_e_o.eo_number }}
+                                        </div>
+
+                                        <div v-if="eo.remarks" class="mt-2 pl-3 border-l-2 border-gray-300 bg-gray-50 py-1.5 pr-3 rounded-r w-fit">
+                                            <p class="text-xs text-gray-600 italic">"{{ eo.remarks }}"</p>
                                         </div>
                                     </td>
+
+                                    <td class="px-6 py-4 text-xs text-gray-600 align-top">
+                                        <span class="flex items-center gap-1 mt-1">
+                                            <Building2 class="w-4 h-4 text-gray-400" />
+                                            {{ getLeadOffice(eo.departments) }}
+                                        </span>
+                                    </td>
+
+                                    <td class="px-6 py-4 align-top">
+                                        <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 border border-gray-200 mt-1">
+                                            {{ eo.status?.name }}
+                                        </span>
+                                    </td>
+
                                     <td class="px-6 py-4 text-center align-middle">
                                         <div class="flex items-center justify-center gap-2">
-                                            <button @click="openIRRDialog(eo)" class="p-2 text-green-600 hover:bg-green-100 rounded-lg transition relative group" title="Manage IRR">
+                                            <button @click="openIRRDialog(eo)" class="group relative flex items-center justify-center rounded-lg bg-green-50 p-2 text-green-600 hover:bg-green-100 transition-colors" title="Manage Implementing Rules">
                                                 <BookOpen class="w-4 h-4" />
-                                                <span v-if="eo.implementing_rules?.length > 0" class="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 border border-white"></span>
+                                                <span v-if="eo.implementing_rules?.length > 0" class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 border border-white"></span>
                                             </button>
                                             <div class="h-4 w-px bg-gray-200 mx-1"></div>
                                             <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF"><Download class="w-4 h-4" /></a>
@@ -410,6 +430,15 @@ const getLeadOffice = (depts: any[]) => {
                                     </td>
                                 </tr>
                             </template>
+                            
+                            <tr v-else>
+                                <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                                    <div class="flex flex-col items-center justify-center">
+                                        <div class="bg-gray-50 p-4 rounded-full mb-3"><Search class="h-6 w-6 text-gray-400" /></div>
+                                        <p class="text-base font-medium text-gray-900">No Executive Orders found</p>
+                                    </div>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>

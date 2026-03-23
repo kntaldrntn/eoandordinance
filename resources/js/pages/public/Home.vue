@@ -193,6 +193,12 @@ const getSponsors = (depts: any[]) => {
                                 {{ item.title }}
                             </h3>
 
+                            <div v-if="item.remarks" class="mb-4 pl-3 border-l-2 border-gray-300 bg-gray-50/50 py-1">
+                                <p class="text-sm text-gray-600 italic">
+                                    "{{ item.remarks }}"
+                                </p>
+                            </div>
+
                             <div class="space-y-3 mb-4">
                                 <div v-if="item.parent_e_o || item.parent_ordinance" class="text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-800">
                                     <div class="flex items-start gap-2">
@@ -244,6 +250,22 @@ const getSponsors = (depts: any[]) => {
                                     <Paperclip class="w-4 h-4" />
                                     {{ item.implementing_rules.length }} IRR Attached
                                 </div>
+
+                                <div v-if="item.implementing_rules?.length > 0" class="w-full mt-3 pl-4 border-l-2 border-blue-100">
+                                <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
+                                <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
+                                    <div class="flex items-center gap-2">
+                                        <FileText class="w-3 h-3 text-blue-400" />
+                                        <span class="text-xs text-gray-600">
+                                            {{ irr.status }} 
+                                            <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
+                                        </span>
+                                    </div>
+                                    <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-colors">
+                                        <Download class="w-3 h-3" /> Download
+                                    </a>
+                                </div>
+                            </div>
                             </div>
 
                             <div class="flex flex-wrap gap-4 mt-5">
