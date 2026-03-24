@@ -32,10 +32,9 @@ class EOController extends Controller
             });
         }
 
-        $eos = $query->orderBy('date_issued', 'desc')
+        $eos = $query->orderBy('id', 'desc')
                      ->paginate(10)
                      ->withQueryString();
-
         // --- NEW: Combine Internal and External members into a single suggestive list ---
         $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
             return [

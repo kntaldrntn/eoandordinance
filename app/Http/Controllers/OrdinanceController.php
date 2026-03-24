@@ -32,7 +32,7 @@ class OrdinanceController extends Controller
         }
 
         return Inertia::render('ordinances/Index', [
-            'ordinances' => $query->orderBy('date_enacted', 'desc')->paginate(10)->withQueryString(),
+            'ordinances' => $query->orderBy('id', 'desc')->paginate(10)->withQueryString(),
             'departments' => Department::orderBy('name')->get(),
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
             'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title')->orderBy('ordinance_number', 'desc')->get(),

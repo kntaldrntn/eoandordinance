@@ -26,7 +26,7 @@ class PublicEOController extends Controller
             $query = Ordinance::with([
                 'status', 
                 'departments',                  
-                'implementingRules' => $irrFilter, 
+                'implementingRules' => $irrFilter, // Ordinances keep their IRRs!
                 'parentOrdinance', 
                 'amendments'
             ]);
@@ -39,20 +39,21 @@ class PublicEOController extends Controller
             }
             
             if ($year) {
-                $query->whereYear('date_enacted', $year);
+                $query->whereYear('date_enacted', $year); // Fixed this! It was accidentally replaced.
             }
 
             if ($isActive && $isActive !== 'all') {
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
             
-            $query->orderBy('date_enacted', 'desc')->orderBy('id', 'desc');
+            // ADDED: The numerical tie-breaker for Ordinances
+            $query->orderBy('id', 'desc');
 
         } else {
             $query = ExecutiveOrder::with([
                 'status', 
                 'departments', 
-                'implementingRules' => $irrFilter, 
+                // Removed 'implementingRules' here because EOs don't have IRRs!
                 'parentEO', 
                 'amendments'
             ]);
@@ -72,7 +73,8 @@ class PublicEOController extends Controller
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
             
-            $query->orderBy('date_issued', 'desc')->orderBy('id', 'desc');
+            // ADDED: The numerical tie-breaker for Executive Orders
+            $query->orderBy('id', 'desc');
         }
 
         $query->whereHas('status', function($q) {
@@ -91,7 +93,7 @@ class PublicEOController extends Controller
 
         return Inertia::render('public/Home', [
             'records' => $query->paginate(12)->withQueryString(),
-            'departments' => Department::select('id', 'name')->get(), // <--- ADDED to resolve IDs to Names
+            'departments' => Department::select('id', 'name')->get(), 
             'filters' => $request->only(['search', 'year', 'type', 'is_active']),
             'years' => $years,
             'activeType' => $type, 

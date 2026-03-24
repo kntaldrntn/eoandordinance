@@ -225,7 +225,8 @@ function submitForm() {
             onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     } else {
-        form.post(route('ordinances.store'), {
+        // ADDED: transform((data) => data) clears out the sticky PUT method!
+        form.transform((data) => data).post(route('ordinances.store'), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     }

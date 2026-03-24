@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
-    BookOpen, Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users,
+    Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users,
     Pencil
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
@@ -22,7 +22,6 @@ const props = defineProps<{
     departments: Array<{ id: number; name: string }>;
     statuses: Array<{ id: number; name: string }>;
     existing_eos: Array<{ id: number; eo_number: string; title: string }>;
-    // ADDED: People Registry for Autocomplete
     peopleRegistry: Array<{ name: string; title: string; type: string }>;
     filters?: { search?: string };
     flash?: { success?: string; error?: string };
@@ -77,7 +76,6 @@ const officeSearchQuery = ref('');
 // --- SUGGESTIVE INPUT LOGIC ---
 const activeSuggestion = ref<string | null>(null);
 
-// UPDATED: Now supports filtering by type ('Internal' | 'External') and splits by newlines
 const getSuggestions = (query: any, typeFilter: string | null = null) => {
     if (!query || typeof query !== 'string') {
         let list = props.peopleRegistry ? props.peopleRegistry : [];
@@ -85,7 +83,6 @@ const getSuggestions = (query: any, typeFilter: string | null = null) => {
         return list.slice(0, 10);
     }
 
-    // Split by commas OR newlines so textareas parse properly
     const parts = query.split(/[\n,]+/).map(s => s.trim());
     const currentSearch = parts[parts.length - 1].toLowerCase();
 
@@ -105,7 +102,6 @@ const getSuggestions = (query: any, typeFilter: string | null = null) => {
     }).slice(0, 10);
 };
 
-// UPDATED: Smarter formatting for Textareas
 const selectPerson = (field: string, name: string) => {
     if (field === 'chairman') form.committee_details.council.chairman = name;
     else if (field === 'vice_chairman') form.committee_details.council.vice_chairman = name;
@@ -123,7 +119,6 @@ const selectPerson = (field: string, name: string) => {
 
         let newValue = '';
         if (current && current.trim() !== '') {
-            // Find the last place the user pressed 'Enter' or typed a ','
             const lastDelimiter = Math.max(current.lastIndexOf(','), current.lastIndexOf('\n'));
             if (lastDelimiter !== -1) {
                 newValue = current.substring(0, lastDelimiter + 1) + ' ' + name;
@@ -134,12 +129,11 @@ const selectPerson = (field: string, name: string) => {
             newValue = name;
         }
 
-        // Apply specific formatting based on the field
         if (field === 'co_chairman') {
-            newValue += ', '; // Inline inputs get commas
+            newValue += ', '; 
             form.committee_details.council.co_chairmans = newValue;
         } else {
-            newValue += ',\n'; // Textareas get a newline to stay visually clean
+            newValue += ',\n'; 
             if (field === 'council_internal') form.committee_details.council.internal_members = newValue;
             else if (field === 'council_external') form.committee_details.council.external_members = newValue;
             else if (field === 'secretariat') form.committee_details.council.secretariat = newValue;
@@ -153,7 +147,6 @@ const selectPerson = (field: string, name: string) => {
     activeSuggestion.value = null;
 };
 
-// Helper for default committee details
 const defaultCommitteeDetails = () => ({
     type: 'none', 
     council: {
@@ -187,33 +180,11 @@ const form = useForm({
     committee_details: defaultCommitteeDetails(), 
 });
 
-// --- IRR MODAL STATE ---
-const showIRRDialog = ref(false);
-const selectedEO = ref<any>(null);
-const irrOfficeSearchQuery = ref(''); 
-
-const irrForm = useForm({
-    executive_order_id: '' as string | number,
-    lead_office_id: '' as string | number,
-    support_office_ids: [] as number[], 
-    status: 'Drafting', 
-    file: null as File | null,
-});
-
-const irrStatuses = ['Drafting', 'Pending Approval', 'Approved', 'Implemented', 'Delayed'];
-
-// --- Computed Filters ---
 const filteredDepartments = computed(() => {
     if (!officeSearchQuery.value) return props.departments;
     return props.departments.filter(dept => dept.name.toLowerCase().includes(officeSearchQuery.value.toLowerCase()));
 });
 
-const filteredIRRDepartments = computed(() => {
-    if (!irrOfficeSearchQuery.value) return props.departments;
-    return props.departments.filter(dept => dept.name.toLowerCase().includes(irrOfficeSearchQuery.value.toLowerCase()));
-});
-
-// --- Functions ---
 function openAddDialog() {
     isEdit.value = false;
     editingId.value = null;
@@ -248,7 +219,6 @@ function openEditDialog(eo: any) {
     form.relationship_type = eo.relationship_type || 'Amends'; 
     form.remarks = eo.remarks || '';
 
-    // Load JSON details (or default if null)
     form.committee_details = eo.committee_details || defaultCommitteeDetails();
 
     const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
@@ -282,36 +252,6 @@ const getChangedFields = (audit: any) => {
     return 'Updated record';
 };
 
-function openIRRDialog(eo: any) {
-    selectedEO.value = eo;
-    irrForm.reset();
-    irrForm.clearErrors();
-    const lead = eo.departments.find((d: any) => d.pivot.role === 'lead');
-    irrForm.lead_office_id = lead ? lead.id : '';
-    irrForm.executive_order_id = eo.id;
-    irrOfficeSearchQuery.value = ''; 
-    showIRRDialog.value = true;
-}
-
-function handleIRRFileChange(e: Event) {
-    const target = e.target as HTMLInputElement;
-    if (target.files && target.files[0]) irrForm.file = target.files[0];
-}
-
-function submitIRR() {
-    irrForm.post(route('irr.store'), {
-        onSuccess: () => { notyf.success('IRR Added Successfully'); showIRRDialog.value = false; },
-    });
-}
-
-function deleteIRR(irrId: number) {
-    if (confirm('Are you sure you want to delete this rule?')) {
-        router.delete(route('irr.destroy', irrId), {
-            onSuccess: () => { notyf.success('IRR Deleted'); showIRRDialog.value = false; }
-        });
-    }
-}
-
 function handleFileChange(e: Event) {
     const target = e.target as HTMLInputElement;
     if (target.files && target.files[0]) form.file = target.files[0];
@@ -319,11 +259,13 @@ function handleFileChange(e: Event) {
 
 function submitForm() {
     if (isEdit.value && editingId.value) {
+        // Appends PUT for updating existing records
         form.transform((data) => ({ ...data, _method: 'PUT' })).post(route('eo.update', editingId.value), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     } else {
-        form.post(route('eo.store'), {
+        // Clears the transform memory so it sends a normal POST for new records!
+        form.transform((data) => data).post(route('eo.store'), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
         });
     }
@@ -417,12 +359,9 @@ const getLeadOffice = (depts: any[]) => {
 
                                     <td class="px-6 py-4 text-center align-middle">
                                         <div class="flex items-center justify-center gap-2">
-                                            <button @click="openIRRDialog(eo)" class="group relative flex items-center justify-center rounded-lg bg-green-50 p-2 text-green-600 hover:bg-green-100 transition-colors" title="Manage Implementing Rules">
-                                                <BookOpen class="w-4 h-4" />
-                                                <span v-if="eo.implementing_rules?.length > 0" class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 border border-white"></span>
-                                            </button>
-                                            <div class="h-4 w-px bg-gray-200 mx-1"></div>
-                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF"><Download class="w-4 h-4" /></a>
+                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF">
+                                                <Download class="w-4 h-4" />
+                                            </a>
                                             <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(eo)" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
                                                 <Pencil class="w-4 h-4" />
                                             </button>
@@ -441,6 +380,13 @@ const getLeadOffice = (depts: any[]) => {
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div v-if="eos.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-6 py-3">
+                    <p class="text-sm text-gray-600">Showing <span class="font-medium">{{ eos.from }}</span>–<span class="font-medium">{{ eos.to }}</span> of <span class="font-medium">{{ eos.total }}</span></p>
+                    <div class="flex gap-1">
+                        <button v-for="(link, index) in eos.links.slice(1, -1)" :key="index" @click="goToPage(String(link.url))" :disabled="!link.url" class="rounded-md px-3 py-1 text-sm transition" :class="[link.active ? 'bg-blue-600 font-medium text-white shadow' : 'border bg-white text-gray-600 hover:bg-gray-100']"><span v-html="link.label"></span></button>
+                    </div>
                 </div>
             </div>
 
@@ -845,48 +791,6 @@ const getLeadOffice = (depts: any[]) => {
                 </div>
             </Transition>
 
-            <Transition name="fade">
-                <div v-if="showIRRDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-                        <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
-                            <div class="flex items-center gap-3"><div class="bg-green-100 p-2 rounded-lg"><BookOpen class="w-6 h-6 text-green-600" /></div><div><h2 class="text-lg font-bold text-gray-900 leading-tight">Manage IRR</h2><p class="text-xs text-gray-500">For: <span class="font-semibold text-blue-600">{{ selectedEO?.eo_number }}</span></p></div></div>
-                            <button @click="showIRRDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1.5 transition">×</button>
-                        </div>
-
-                        <div class="mb-8">
-                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Implementing Rules List</h3>
-                            <div v-if="selectedEO?.implementing_rules?.length > 0" class="space-y-2">
-                                <div v-for="rule in selectedEO.implementing_rules" :key="rule.id" class="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50 transition-all hover:bg-white hover:shadow-sm">
-                                    <div class="flex items-center gap-3"><FileText class="w-5 h-5 text-gray-400" /><div><p class="text-sm font-semibold text-gray-900">{{ rule.status }}</p><p class="text-[10px] text-gray-500 uppercase font-medium">Lead: {{ rule.lead_office?.name || 'Unassigned' }}</p></div></div>
-                                    <div class="flex items-center gap-2"><a :href="rule.file_url" target="_blank" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">PDF</a><button @click="deleteIRR(rule.id)" class="text-gray-300 hover:text-red-600 p-1"><Trash2 class="w-4 h-4" /></button></div>
-                                </div>
-                            </div>
-                            <div v-else class="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200"><p class="text-sm text-gray-400">No IRR records found.</p></div>
-                        </div>
-
-                        <div class="bg-green-50/50 rounded-2xl border border-green-100 p-5 shadow-inner">
-                            <h3 class="text-xs font-bold text-green-800 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus class="w-4 h-4" /> Add New Rule</h3>
-                            <form @submit.prevent="submitIRR" class="space-y-4">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label class="mb-1 block text-sm font-medium text-gray-700">Implementation Status</label><select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-green-500"><option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option></select></div>
-                                    <div><label class="mb-1 block text-sm font-medium text-gray-700">Lead Office</label><select v-model="irrForm.lead_office_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-green-500"><option value="" disabled>Select Office</option><option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option></select></div>
-                                </div>
-                                
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Support Offices (IRR)</label>
-                                    <div class="relative mb-2"><Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input v-model="irrOfficeSearchQuery" type="text" placeholder="Search offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none bg-white" /></div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto p-3 bg-white rounded-lg border border-green-100">
-                                        <label v-for="dept in filteredIRRDepartments" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-green-50 p-1.5 rounded transition"><input type="checkbox" :value="dept.id" v-model="irrForm.support_office_ids" class="rounded text-green-600 focus:ring-green-500 h-4 w-4 border-gray-300" /><span class="text-xs text-gray-700">{{ dept.name }}</span></label>
-                                    </div>
-                                </div>
-
-                                <div><label class="mb-1 block text-sm font-medium text-gray-700">Upload PDF</label><input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-white file:text-green-700 cursor-pointer"/></div>
-                                <div class="flex justify-end pt-2"><button type="submit" :disabled="irrForm.processing" class="bg-green-600 px-6 py-2 text-white rounded-lg hover:bg-green-700 shadow text-sm font-bold transition-all disabled:opacity-50">Save Rule</button></div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </Transition>
         </div>
     </AppLayout>
 </template>
