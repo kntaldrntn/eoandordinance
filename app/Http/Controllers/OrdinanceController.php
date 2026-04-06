@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\Ordinance;
+use App\Models\CityEmployee; // <--- Added import
+use App\Models\ExternalMember; // <--- Added import
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +22,7 @@ class OrdinanceController extends Controller
             'parentOrdinance', 
             'amendments', 
             'implementingRules.leadOffice', 
-            'audits.user' // <--- CRITICAL FOR HISTORY TAB
+            'audits.user' 
         ]);
 
         if ($request->filled('search')) {
@@ -31,11 +33,20 @@ class OrdinanceController extends Controller
             });
         }
 
+        $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
+            return ['name' => $e->full_name, 'title' => ($e->position ?? 'Staff') . ($e->department ? ' (' . $e->department->name . ')' : ''), 'type' => 'Internal'];
+        });
+        $externals = ExternalMember::where('is_active', true)->get()->map(function($e) {
+            return ['name' => $e->full_name, 'title' => $e->position . ($e->organization ? ' - ' . $e->organization : ''), 'type' => 'External'];
+        });
+        $peopleRegistry = $employees->concat($externals)->sortBy('name')->values()->toArray();
+
         return Inertia::render('ordinances/Index', [
             'ordinances' => $query->orderBy('id', 'desc')->paginate(10)->withQueryString(),
             'departments' => Department::orderBy('name')->get(),
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
             'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title')->orderBy('ordinance_number', 'desc')->get(),
+            'peopleRegistry' => $peopleRegistry,
             'filters' => $request->only(['search']),
             'flash' => [
                 'success' => session('success'),
@@ -49,6 +60,8 @@ class OrdinanceController extends Controller
         $validated = $request->validate([
             'ordinance_number' => 'required|string|unique:ordinances,ordinance_number',
             'title' => 'required|string|max:1000',
+            'subject_matter' => 'nullable|string', // <--- ADDED
+            'author_details' => 'nullable|array', // <--- ADDED
             'date_enacted' => 'required|date',
             'date_approved' => 'nullable|date',
             'effectivity_date' => 'nullable|date',
@@ -62,10 +75,9 @@ class OrdinanceController extends Controller
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supersedes',
             'remarks' => 'nullable|string',
             
-            // Array of department IDs
-            'sponsor_department_ids' => 'nullable|array', 
+            // Array of department IDs (Removed sponsor_department_ids)
             'implementing_department_ids' => 'nullable|array',
-            'is_active' => 'boolean', // <--- ADDED VALIDATION
+            'is_active' => 'boolean', 
         ]);
 
         DB::transaction(function () use ($request, $validated) {
@@ -77,11 +89,19 @@ class OrdinanceController extends Controller
                 
                 if ($parent) {
                     if ($action === 'Amends') {
-                        $parent->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                        $parent->update([
+                            'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
+                        ]);
                     } elseif ($action === 'Repeals') {
-                        $parent->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
+                        $parent->update([
+                            'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
+                            'is_active' => false // Kills parent
+                        ]);
                     } elseif ($action === 'Supersedes') {
-                        $parent->update(['status_id' => DB::table('statuses')->where('name', 'Superseded')->value('id')]);
+                        $parent->update([
+                            'status_id' => DB::table('statuses')->where('name', 'Superseded')->value('id'),
+                            'is_active' => false // Kills parent
+                        ]);
                     }
                 }
             }
@@ -93,13 +113,15 @@ class OrdinanceController extends Controller
             $ordinance = Ordinance::create([
                 'ordinance_number' => $validated['ordinance_number'],
                 'title' => $validated['title'],
+                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
+                'author_details' => $validated['author_details'] ?? null, // <--- ADDED
                 'date_enacted' => $validated['date_enacted'],
                 'date_approved' => $validated['date_approved'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'attested_by' => $validated['attested_by'],
                 'approved_by' => $validated['approved_by'],
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'] ?? true, // <--- ADDED SAVE
+                'is_active' => $validated['is_active'] ?? true,
                 'file_path' => $path,
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
@@ -109,12 +131,6 @@ class OrdinanceController extends Controller
             // 4. Attach Offices (with Roles)
             $syncData = [];
             
-            // Sponsors
-            if (!empty($validated['sponsor_department_ids'])) {
-                foreach ($validated['sponsor_department_ids'] as $id) {
-                    $syncData[$id] = ['role' => 'sponsor'];
-                }
-            }
             // Implementing
             if (!empty($validated['implementing_department_ids'])) {
                 foreach ($validated['implementing_department_ids'] as $id) {
@@ -136,6 +152,8 @@ class OrdinanceController extends Controller
             // Identity
             'ordinance_number' => 'required|string|unique:ordinances,ordinance_number,' . $ordinance->id,
             'title' => 'required|string|max:1000',
+            'subject_matter' => 'nullable|string', // <--- ADDED
+            'author_details' => 'nullable|array', // <--- ADDED
             
             // Dates
             'date_enacted' => 'required|date',
@@ -148,17 +166,16 @@ class OrdinanceController extends Controller
             
             // Status & File
             'status_id' => 'required|exists:statuses,id',
-            'file' => 'nullable|file|mimes:pdf|max:20480', // Nullable on update
+            'file' => 'nullable|file|mimes:pdf|max:20480', 
             
             // Logic Fields
             'amends_ordinance_id' => 'nullable|exists:ordinances,id',
             'relationship_type' => 'nullable|string|in:Amends,Repeals,Supersedes',
             'remarks' => 'nullable|string',
             
-            // Offices
-            'sponsor_department_ids' => 'nullable|array', 
+            // Offices (Removed sponsor_department_ids)
             'implementing_department_ids' => 'nullable|array',
-            'is_active' => 'boolean', // <--- ADDED VALIDATION
+            'is_active' => 'boolean', 
         ]);
 
         DB::transaction(function () use ($request, $validated, $ordinance) {
@@ -174,11 +191,19 @@ class OrdinanceController extends Controller
                     
                     if ($parent) {
                         if ($action === 'Amends') {
-                            $parent->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                            $parent->update([
+                                'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
+                            ]);
                         } elseif ($action === 'Repeals') {
-                            $parent->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
+                            $parent->update([
+                                'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
+                                'is_active' => false // Kills parent
+                            ]);
                         } elseif ($action === 'Supersedes') {
-                            $parent->update(['status_id' => DB::table('statuses')->where('name', 'Superseded')->value('id')]);
+                            $parent->update([
+                                'status_id' => DB::table('statuses')->where('name', 'Superseded')->value('id'),
+                                'is_active' => false // Kills parent
+                            ]);
                         }
                     }
                 }
@@ -196,13 +221,15 @@ class OrdinanceController extends Controller
             $ordinance->update([
                 'ordinance_number' => $validated['ordinance_number'],
                 'title' => $validated['title'],
+                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
+                'author_details' => $validated['author_details'] ?? null, // <--- ADDED
                 'date_enacted' => $validated['date_enacted'],
                 'date_approved' => $validated['date_approved'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'attested_by' => $validated['attested_by'],
                 'approved_by' => $validated['approved_by'],
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'], // <--- ADDED UPDATE
+                'is_active' => $validated['is_active'], 
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
@@ -211,11 +238,7 @@ class OrdinanceController extends Controller
             // 4. Sync Offices
             $syncData = [];
             
-            if (!empty($validated['sponsor_department_ids'])) {
-                foreach ($validated['sponsor_department_ids'] as $id) {
-                    $syncData[$id] = ['role' => 'sponsor'];
-                }
-            }
+            // Implementing
             if (!empty($validated['implementing_department_ids'])) {
                 foreach ($validated['implementing_department_ids'] as $id) {
                     if (!isset($syncData[$id])) {

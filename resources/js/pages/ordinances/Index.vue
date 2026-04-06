@@ -13,41 +13,7 @@ import { route } from 'ziggy-js';
 // --- Props ---
 const props = defineProps<{
     ordinances: {
-        data: Array<{
-            id: number;
-            ordinance_number: string;
-            title: string;
-            date_enacted: string;
-            date_approved: string | null;
-            effectivity_date: string | null;
-            file_url: string;
-            attested_by: string | null;
-            approved_by: string | null;
-            is_active: boolean; 
-            audits: Array<{
-                id: number;
-                user: { name: string };
-                action: string;
-                created_at: string;
-                old_values: any;
-                new_values: any;
-            }>;
-            status: { name: string };
-            status_id: number;
-            amends_ordinance_id: number | null;
-            relationship_type: string | null;
-            remarks: string | null;
-            parent_ordinance: { ordinance_number: string } | null;
-            amendments?: Array<{ id: number; ordinance_number: string }>;
-            departments: Array<{ id: number; name: string; pivot: { role: string } }>;
-            implementing_rules: Array<{
-                id: number;
-                status: string;
-                file_url: string;
-                lead_office: { name: string };
-                created_at: string;
-            }>;
-        }>;
+        data: Array<any>;
         links: Array<any>;
         from: number; to: number; total: number;
         current_page: number; last_page: number;
@@ -55,6 +21,7 @@ const props = defineProps<{
     departments: Array<{ id: number; name: string }>;
     statuses: Array<{ id: number; name: string }>;
     existing_ordinances: Array<{ id: number; ordinance_number: string; title: string }>;
+    peopleRegistry: Array<{ name: string; title: string; type: string }>; // <--- Added for Author Search
     filters?: { search?: string };
     flash?: { success?: string; error?: string };
 }>();
@@ -103,12 +70,81 @@ const editingId = ref<number | null>(null);
 const activeModalTab = ref('details'); 
 const selectedRecord = ref<any>(null); 
 
-const sponsorSearchQuery = ref('');
 const implementingSearchQuery = ref('');
+
+// --- PARENT ORDINANCE SUGGESTIVE SEARCH ---
+const parentSearchQuery = ref('');
+const showParentDropdown = ref(false);
+
+const filteredParents = computed(() => {
+    let list = props.existing_ordinances || [];
+    
+    if (isEdit.value && editingId.value) {
+        list = list.filter(o => o.id !== editingId.value);
+    }
+    
+    if (parentSearchQuery.value) {
+        const q = parentSearchQuery.value.toLowerCase();
+        list = list.filter(o => 
+            o.ordinance_number.toLowerCase().includes(q) || 
+            (o.title && o.title.toLowerCase().includes(q))
+        );
+    }
+    
+    return list.slice(0, 15);
+});
+
+const selectParent = (parent: any) => {
+    form.amends_ordinance_id = parent.id;
+    parentSearchQuery.value = `${parent.ordinance_number} - ${parent.title}`;
+    showParentDropdown.value = false;
+};
+
+const clearParent = () => {
+    form.amends_ordinance_id = '';
+    parentSearchQuery.value = '';
+    form.relationship_type = 'Amends'; 
+};
+
+// --- SUGGESTIVE INPUT LOGIC (AUTHORS) ---
+const activeSuggestion = ref<string | null>(null);
+
+const getSuggestions = (query: any) => {
+    if (!query || typeof query !== 'string') return props.peopleRegistry ? props.peopleRegistry.slice(0, 10) : [];
+    const parts = query.split(/[\n,]+/).map(s => s.trim());
+    const currentSearch = parts[parts.length - 1].toLowerCase();
+    if (!currentSearch) return props.peopleRegistry.slice(0, 10);
+
+    return props.peopleRegistry.filter(p => {
+        const safeName = p.name ? String(p.name).toLowerCase() : '';
+        return safeName.includes(currentSearch);
+    }).slice(0, 10);
+};
+
+const selectPerson = (field: string, name: string) => {
+    let current = '';
+    if (field === 'primary') current = form.author_details.primary_author;
+    else if (field === 'co_authors') current = form.author_details.co_authors;
+
+    let newValue = '';
+    if (current && current.trim() !== '') {
+        const lastDelimiter = Math.max(current.lastIndexOf(','), current.lastIndexOf('\n'));
+        if (lastDelimiter !== -1) newValue = current.substring(0, lastDelimiter + 1) + ' ' + name;
+        else newValue = name;
+    } else {
+        newValue = name;
+    }
+
+    if (field === 'primary') form.author_details.primary_author = newValue;
+    else if (field === 'co_authors') form.author_details.co_authors = newValue + ',\n';
+    
+    activeSuggestion.value = null;
+};
 
 const form = useForm({
     ordinance_number: '',
     title: '',
+    subject_matter: '', // <--- NEW
     date_enacted: '',
     date_approved: '',
     effectivity_date: '',
@@ -119,15 +155,13 @@ const form = useForm({
     amends_ordinance_id: '' as string | number,
     relationship_type: 'Amends',
     remarks: '',
-    sponsor_department_ids: [] as number[],
+    author_details: { // <--- REPLACED sponsor_department_ids
+        primary_author: '',
+        co_authors: '',
+        committee_chairmanship: ''
+    },
     implementing_department_ids: [] as number[],
     file: null as File | null,
-});
-
-// --- Computed Filters ---
-const filteredSponsors = computed(() => {
-    if (!sponsorSearchQuery.value) return props.departments;
-    return props.departments.filter(dept => dept.name.toLowerCase().includes(sponsorSearchQuery.value.toLowerCase()));
 });
 
 const filteredImplementing = computed(() => {
@@ -140,13 +174,22 @@ const showIRRDialog = ref(false);
 const selectedOrd = ref<any>(null);
 
 const irrForm = useForm({
-    ordinance_id: '' as string | number,
+    ordinance_id: '' as string | number, // (Note: this says eo_id in your EO file)
     lead_office_id: '' as string | number,
-    status: 'Drafting', 
+    support_office_ids: [] as number[], // <--- NEW
+    status: 'Active', // <--- CHANGED
     file: null as File | null,
 });
 
-const irrStatuses = ['Drafting', 'Pending Approval', 'Approved', 'Implemented', 'Delayed'];
+// Update the available statuses:
+const irrStatuses = ['Active', 'On-hold', 'Dropped']; // <--- CHANGED
+
+// Add the search filter logic for the new support offices box:
+const irrSupportSearchQuery = ref('');
+const filteredIrrSupport = computed(() => {
+    if (!irrSupportSearchQuery.value) return props.departments;
+    return props.departments.filter(dept => dept.name.toLowerCase().includes(irrSupportSearchQuery.value.toLowerCase()));
+});
 
 // --- Functions: Ordinance CRUD ---
 function openAddDialog() {
@@ -154,8 +197,8 @@ function openAddDialog() {
     editingId.value = null;
     selectedRecord.value = null;
     activeModalTab.value = 'details';
-    sponsorSearchQuery.value = '';
     implementingSearchQuery.value = '';
+    parentSearchQuery.value = ''; 
     
     form.reset();
     form.clearErrors();
@@ -169,7 +212,6 @@ function openEditDialog(ord: any) {
     editingId.value = ord.id;
     selectedRecord.value = ord; 
     activeModalTab.value = 'details'; 
-    sponsorSearchQuery.value = '';
     implementingSearchQuery.value = '';
     
     form.clearErrors();
@@ -177,6 +219,7 @@ function openEditDialog(ord: any) {
     // Basic Info
     form.ordinance_number = ord.ordinance_number;
     form.title = ord.title;
+    form.subject_matter = ord.subject_matter || ''; // <--- NEW
     form.date_enacted = ord.date_enacted ? ord.date_enacted.split('T')[0] : '';
     form.date_approved = ord.date_approved ? ord.date_approved.split('T')[0] : '';
     form.effectivity_date = ord.effectivity_date ? ord.effectivity_date.split('T')[0] : '';
@@ -190,10 +233,15 @@ function openEditDialog(ord: any) {
     form.relationship_type = ord.relationship_type || 'Amends';
     form.remarks = ord.remarks || '';
     
-    // Roles
-    form.sponsor_department_ids = ord.departments
-        .filter((d: any) => d.pivot.role === 'sponsor')
-        .map((d: any) => d.id);
+    if (ord.amends_ordinance_id) {
+        const parent = props.existing_ordinances.find(o => o.id === ord.amends_ordinance_id);
+        parentSearchQuery.value = parent ? `${parent.ordinance_number} - ${parent.title}` : '';
+    } else {
+        parentSearchQuery.value = '';
+    }
+
+    // Load JSON Authors
+    form.author_details = ord.author_details || { primary_author: '', co_authors: '', committee_chairmanship: '' };
         
     form.implementing_department_ids = ord.departments
         .filter((d: any) => d.pivot.role === 'implementing')
@@ -205,37 +253,30 @@ function openEditDialog(ord: any) {
 
 const formatDate = (dateString: string | null) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 function handleFileChange(e: Event) {
     const target = e.target as HTMLInputElement;
-    if (target.files && target.files[0]) {
-        form.file = target.files[0];
-    }
+    if (target.files && target.files[0]) form.file = target.files[0];
 }
 
 function submitForm() {
     if (isEdit.value && editingId.value) {
         form.transform((data) => ({ ...data, _method: 'PUT' })).post(route('ordinances.update', editingId.value), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
+            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
         });
     } else {
-        // ADDED: transform((data) => data) clears out the sticky PUT method!
         form.transform((data) => data).post(route('ordinances.store'), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
+            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
         });
     }
 }
 
 const formatAuditDate = (date: string) => {
-    return new Date(date).toLocaleString('en-US', { 
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-    });
+    return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 const getChangedFields = (audit: any) => {
@@ -251,10 +292,7 @@ const getChangedFields = (audit: any) => {
     if (newVals) {
         const changes = Object.keys(newVals)
             .filter(key => key !== 'updated_at')
-            .map(key => {
-                const fieldName = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); 
-                return fieldName;
-            });
+            .map(key => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
             
         if (changes.length === 0) return 'Updated metadata';
         return 'Modified: ' + changes.join(', ');
@@ -263,16 +301,17 @@ const getChangedFields = (audit: any) => {
 };
 
 // --- Functions: IRR Management ---
-function openIRRDialog(ord: any) {
-    selectedOrd.value = ord;
+function openIRRDialog(record: any) {
+    selectedOrd.value = record; 
     irrForm.reset();
     irrForm.clearErrors();
+    irrSupportSearchQuery.value = ''; 
     
-    const imp = ord.departments.find((d: any) => d.pivot.role === 'implementing');
+    const imp = record.departments.find((d: any) => d.pivot.role === 'implementing');
     irrForm.lead_office_id = imp ? imp.id : '';
-    
-    irrForm.ordinance_id = ord.id;
-    showIRRDialog.value = true;
+    irrForm.support_office_ids = []; 
+    irrForm.ordinance_id = record.id; 
+    showIRRDialog.value = true; 
 }
 
 function handleIRRFileChange(e: Event) {
@@ -307,11 +346,11 @@ function deleteIRR(irrId: number) {
 }
 
 // Helpers
-const getSponsors = (depts: any[]) => {
-    const sponsors = depts.filter(d => d.pivot.role === 'sponsor');
-    if (sponsors.length === 0) return '—';
-    if (sponsors.length === 1) return sponsors[0].name;
-    return `${sponsors[0].name} +${sponsors.length - 1} others`;
+const getAuthorLabel = (ord: any) => {
+    if (ord.author_details && ord.author_details.primary_author) {
+        return ord.author_details.primary_author;
+    }
+    return 'City Council';
 };
 </script>
 
@@ -339,7 +378,7 @@ const getSponsors = (depts: any[]) => {
                             <tr>
                                 <th class="px-6 py-4 font-semibold">Ord. Tracking</th>
                                 <th class="px-6 py-4 font-semibold w-1/3">Subject Title</th>
-                                <th class="px-6 py-4 font-semibold">Sponsor / Author</th>
+                                <th class="px-6 py-4 font-semibold">Primary Author</th>
                                 <th class="px-6 py-4 font-semibold">Status</th>
                                 <th class="px-6 py-4 text-center font-semibold">Action</th>
                             </tr>
@@ -383,7 +422,7 @@ const getSponsors = (depts: any[]) => {
                                     <td class="px-6 py-4 text-xs text-gray-600 align-top">
                                         <span class="flex items-center gap-1 mt-1">
                                             <UserCheck class="w-4 h-4 text-gray-400" />
-                                            {{ getSponsors(ord.departments) }}
+                                            {{ getAuthorLabel(ord) }}
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 align-top">
@@ -438,7 +477,7 @@ const getSponsors = (depts: any[]) => {
                                 </h2>
                                 <p class="text-xs text-gray-500 mt-1">{{ isEdit ? 'Update details.' : 'Create a new record.' }}</p>
                             </div>
-                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1.5 transition">×</button>
+                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
                         </div>
 
                         <div v-if="isEdit" class="flex items-center gap-6 border-b border-gray-100 mb-6">
@@ -449,34 +488,48 @@ const getSponsors = (depts: any[]) => {
                         <div v-show="activeModalTab === 'details'">
                             <form @submit.prevent="submitForm" class="space-y-5">
                                 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5 mb-5">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-gray-700">Ordinance Number</label>
                                         <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
                                         <p v-if="form.errors.ordinance_number" class="text-[10px] text-red-500 mt-1">{{ form.errors.ordinance_number }}</p>
                                     </div>
-                                    <div class="space-y-3">
+                                    
+                                    <div>
                                         <label class="mb-1 block text-sm font-medium text-gray-700">Legal Status</label>
                                         <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                             <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                         </select>
-                                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200 px-3">
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-transparent select-none" aria-hidden="true">Spacer</label>
+                                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 h-[42px]">
                                             <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Active Status</span>
                                             <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
                                                 <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'" />
                                             </button>
                                         </div>
                                     </div>
+                                    
+                                    <div class="hidden md:block"></div>
                                 </div>
 
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Subject Title</label>
-                                    <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Describe the ordinance..."></textarea>
+                                <div class="space-y-4 mb-5">
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Subject Title</label>
+                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Describe the ordinance..." required></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Subject Matter</label>
+                                        <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief summary of the subject matter..."></textarea>
+                                    </div>
                                 </div>
 
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-gray-700">Remarks</label>
-                                    <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Describe the ordinance..."></textarea>
+                                    <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Optional context or notes..."></textarea>
                                 </div>
 
                                 <div class="p-4 bg-amber-50/50 rounded-xl border border-amber-100 space-y-4">
@@ -484,13 +537,39 @@ const getSponsors = (depts: any[]) => {
                                         <Info class="w-4 h-4" /> Legal Context (Transparency)
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="mb-1 block text-xs font-medium text-amber-900">Target Ordinance (Parent)</label>
-                                            <select v-model="form.amends_ordinance_id" class="w-full rounded-lg border border-amber-200 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                                                <option value="">None (New Parent)</option>
-                                                <option v-for="ex in existing_ordinances" :key="ex.id" :value="ex.id">{{ ex.ordinance_number }} - {{ ex.title }}</option>
-                                            </select>
+                                        
+                                        <div class="relative">
+                                            <label class="mb-1 block text-xs font-medium text-amber-900">Previous Ordinance Amended?</label>
+                                            
+                                            <div class="relative">
+                                                <input 
+                                                    type="text" 
+                                                    v-model="parentSearchQuery"
+                                                    @focus="showParentDropdown = true"
+                                                    @input="form.amends_ordinance_id = ''; showParentDropdown = true"
+                                                    @blur="setTimeout(() => showParentDropdown = false, 200)"
+                                                    class="w-full rounded-lg border border-amber-200 px-3 py-2 pr-8 bg-white outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                                                    placeholder="Search Ord. Number or Title..."
+                                                />
+                                                <button v-if="form.amends_ordinance_id || parentSearchQuery" @click="clearParent" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-amber-400 hover:text-amber-600 transition">
+                                                    <XCircle class="w-4 h-4" />
+                                                </button>
+                                            </div>
+
+                                            <div v-if="showParentDropdown && filteredParents.length > 0" class="absolute z-50 w-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="ex in filteredParents" :key="ex.id"
+                                                     @mousedown.prevent="selectParent(ex)"
+                                                     class="px-3 py-2 hover:bg-amber-50 cursor-pointer border-b border-amber-50 last:border-0 text-sm transition-colors">
+                                                    <div class="font-bold text-amber-900">{{ ex.ordinance_number }}</div>
+                                                    <div class="text-xs text-gray-500 truncate">{{ ex.title }}</div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div v-else-if="showParentDropdown && parentSearchQuery" class="absolute z-50 w-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg p-3 text-xs text-gray-500 text-center">
+                                                No matching records found.
+                                            </div>
                                         </div>
+
                                         <div v-if="form.amends_ordinance_id">
                                             <label class="mb-1 block text-xs font-medium text-amber-900">Action Type</label>
                                             <select v-model="form.relationship_type" class="w-full rounded-lg border border-amber-200 px-3 py-2 bg-white text-xs font-bold uppercase focus:ring-2 focus:ring-amber-500">
@@ -515,25 +594,56 @@ const getSponsors = (depts: any[]) => {
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-blue-50/50 rounded-xl border border-blue-100/80">
                                     
-                                    <div>
-                                        <div class="flex items-center justify-between mb-2">
-                                            <label class="text-sm font-semibold text-blue-900">Sponsors / Authors</label>
-                                            <span class="text-[10px] font-bold text-white bg-blue-500 px-2 py-0.5 rounded-full shadow-sm">{{ form.sponsor_department_ids.length }} Selected</span>
+                                    <div class="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-blue-200 pb-4 mb-2">
+                                        <div class="relative">
+                                            <label class="mb-1 block text-sm font-bold text-gray-700">Primary Sponsor / Author</label>
+                                            <input 
+                                                v-model="form.author_details.primary_author" 
+                                                @focus.stop="activeSuggestion = 'primary'"
+                                                @click.stop="activeSuggestion = 'primary'"
+                                                @input="activeSuggestion = 'primary'"
+                                                type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type..." />
+                                            
+                                            <div v-if="activeSuggestion === 'primary' && getSuggestions(form.author_details.primary_author).length > 0" 
+                                                 class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="(person, idx) in getSuggestions(form.author_details.primary_author)" :key="idx"
+                                                     @mousedown.prevent="selectPerson('primary', person.name)"
+                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                    <div class="text-[10px] text-gray-500">{{ person.title }}</div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="relative mb-2">
-                                            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                                            <input v-model="sponsorSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+
+                                        <div class="relative">
+                                            <label class="mb-1 block text-sm font-bold text-gray-700">Committee Chairmanship(s)</label>
+                                            <textarea 
+                                                v-model="form.author_details.committee_chairmanship" 
+                                                rows="1" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Committee on Health..."></textarea>
                                         </div>
-                                        <div class="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto p-3 bg-white rounded-lg border border-blue-100">
-                                            <label v-for="dept in filteredSponsors" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1.5 rounded transition">
-                                                <input type="checkbox" :value="dept.id" v-model="form.sponsor_department_ids" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" />
-                                                <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
-                                            </label>
-                                            <div v-if="filteredSponsors.length === 0" class="text-[10px] text-gray-400 text-center py-2">No offices match your search.</div>
+
+                                        <div class="relative md:col-span-2">
+                                            <label class="mb-1 block text-sm font-bold text-gray-700">Co-Authors / Committee Members</label>
+                                            <textarea 
+                                                v-model="form.author_details.co_authors" 
+                                                @focus.stop="activeSuggestion = 'co_authors'"
+                                                @click.stop="activeSuggestion = 'co_authors'"
+                                                @input="activeSuggestion = 'co_authors'"
+                                                rows="3" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or list co-authors..."></textarea>
+                                            
+                                            <div v-if="activeSuggestion === 'co_authors' && getSuggestions(form.author_details.co_authors).length > 0" 
+                                                 class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="(person, idx) in getSuggestions(form.author_details.co_authors)" :key="idx"
+                                                     @mousedown.prevent="selectPerson('co_authors', person.name)"
+                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                    <div class="text-[10px] text-gray-500">{{ person.title }}</div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div>
+                                    <div class="md:col-span-2">
                                         <div class="flex items-center justify-between mb-2">
                                             <label class="text-sm font-semibold text-blue-900">Implementing Office</label>
                                             <span class="text-[10px] font-bold text-white bg-blue-500 px-2 py-0.5 rounded-full shadow-sm">{{ form.implementing_department_ids.length }} Selected</span>
@@ -542,7 +652,7 @@ const getSponsors = (depts: any[]) => {
                                             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                             <input v-model="implementingSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                                         </div>
-                                        <div class="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto p-3 bg-white rounded-lg border border-blue-100">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-white rounded-lg border border-blue-100">
                                             <label v-for="dept in filteredImplementing" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1.5 rounded transition">
                                                 <input type="checkbox" :value="dept.id" v-model="form.implementing_department_ids" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" />
                                                 <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
@@ -630,7 +740,7 @@ const getSponsors = (depts: any[]) => {
                             <form @submit.prevent="submitIRR" class="space-y-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Implementation Status</label>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">IRR Status</label>
                                         <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none">
                                             <option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option>
                                         </select>
@@ -642,10 +752,29 @@ const getSponsors = (depts: any[]) => {
                                             <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                         </select>
                                     </div>
+                                    
+                                    <div class="md:col-span-2">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-sm font-medium text-gray-700">Support Offices</label>
+                                            <span class="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{{ irrForm.support_office_ids.length }} Selected</span>
+                                        </div>
+                                        <div class="relative mb-2">
+                                            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                            <input v-model="irrSupportSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-green-500 bg-white" />
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto p-3 bg-white rounded-lg border border-gray-200">
+                                            <label v-for="dept in filteredIrrSupport" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-green-50 p-1.5 rounded transition">
+                                                <input type="checkbox" :value="dept.id" v-model="irrForm.support_office_ids" class="rounded text-green-600 focus:ring-green-500 h-4 w-4 border-gray-300" />
+                                                <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
+                                            </label>
+                                            <div v-if="filteredIrrSupport.length === 0" class="text-[10px] text-gray-400 text-center py-2 col-span-full">No offices match your search.</div>
+                                        </div>
+                                    </div>
                                 </div>
+                                
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-gray-700">Upload PDF</label>
-                                    <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-white file:text-green-700 cursor-pointer"/>
+                                    <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-white file:text-green-700 cursor-pointer" required/>
                                 </div>
                                 <div class="flex justify-end pt-2">
                                     <button type="submit" :disabled="irrForm.processing" class="bg-green-600 px-6 py-2 text-white rounded-lg shadow-sm hover:bg-green-700 text-sm font-bold transition-all disabled:opacity-50">

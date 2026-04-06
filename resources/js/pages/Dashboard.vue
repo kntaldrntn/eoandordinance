@@ -13,7 +13,7 @@ const props = defineProps<{
         total_eos: number;
         total_ordinances: number; 
         issued_this_year: number; 
-        pending_irrs: number;
+        ords_with_irrs: number;
         active_offices: number;
     };
     chart: {
@@ -106,12 +106,10 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                 </div>
             </div>
 
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                
+            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">       
                 <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Filtered E.O.s</p>
-                        <div class="rounded-full bg-blue-50 p-2 text-blue-600">
+                        <p class="text-sm font-medium text-gray-500">Executive Orders</p> <div class="rounded-full bg-blue-50 p-2 text-blue-600">
                             <FileText class="h-4 w-4" />
                         </div>
                     </div>
@@ -123,8 +121,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 
                 <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Filtered Ordinances</p>
-                        <div class="rounded-full bg-indigo-50 p-2 text-indigo-600">
+                        <p class="text-sm font-medium text-gray-500">Ordinances</p> <div class="rounded-full bg-indigo-50 p-2 text-indigo-600">
                             <Gavel class="h-4 w-4" />
                         </div>
                     </div>
@@ -144,21 +141,21 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <div class="mt-4">
                         <h3 class="text-2xl font-bold text-gray-900">{{ stats.issued_this_year }}</h3>
                         <p class="text-xs text-gray-500 mt-1">
-                            {{ selectedYear === 'all' ? 'All time volume' : `Volume in ${selectedYear}` }}
+                            {{ selectedYear === 'all' ? 'All time volume(Executive Orders and Ordinances)' : `Volume in ${selectedYear}` }}
                         </p>
                     </div>
                 </div>
 
-                <div class="rounded-xl border bg-white p-6 shadow-sm border-l-4 border-l-amber-400">
+                <div class="rounded-xl border bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-amber-700">Pending IRR</p>
-                        <div class="rounded-full bg-amber-50 p-2 text-amber-600">
-                            <AlertCircle class="h-4 w-4" />
+                        <p class="text-sm font-medium text-gray-500">With IRR's</p>
+                        <div class="rounded-full bg-purple-50 p-2 text-purple-600">
+                            <BookOpen class="h-4 w-4" />
                         </div>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.pending_irrs }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Drafting / Approval</p>
+                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.ords_with_irrs }}</h3>
+                        <p class="text-xs text-gray-500 mt-1">Ordinances with IRR's</p>
                     </div>
                 </div>
             </div>

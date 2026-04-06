@@ -14,7 +14,7 @@ const props = defineProps<{
         data: Array<any>;
         links: Array<any>;
     };
-    departments: Array<{ id: number; name: string }>; // <--- Added departments prop
+    departments: Array<{ id: number; name: string }>; 
     filters: { search?: string; year?: string; type?: string; is_active?: string }; 
     years: number[];
     activeType: string;
@@ -65,13 +65,37 @@ const toggleHistory = (id: number) => {
 };
 
 // --- STYLING HELPERS ---
+
+const getPastTenseAction = (type: string) => {
+    if (type === 'Amends') return 'Amended';
+    if (type === 'Repeals') return 'Repealed';
+    if (type === 'Supersedes') return 'Superseded';
+    if (type === 'Supplements') return 'Supplemented';
+    return 'Amended'; // Fallback
+};
+
 const getStatusColor = (statusName: string) => {
+    // FORMALITY: Standard statuses are now clean and neutral
     switch(statusName) {
-        case 'Active': return 'bg-green-50 text-green-700 border-green-200 ring-green-600/20';
-        case 'Amended': return 'bg-amber-50 text-amber-700 border-amber-200 ring-amber-600/20';
+        case 'Active': 
+        case 'In Effect': 
+            return 'bg-white text-gray-800 border-gray-300 ring-gray-900/10 font-bold';
+        case 'Inactive': 
+            return 'bg-gray-100 text-gray-500 border-gray-200 ring-gray-500/10';
+        
+        // LEGAL ACTIONS: Distinct colors so amendments/repeals stand out
+        case 'Amended': 
+            return 'bg-blue-50 text-blue-700 border-blue-200 ring-blue-600/20'; 
+        case 'Supplements': 
+        case 'Supplemented':
+            return 'bg-emerald-50 text-emerald-700 border-emerald-200 ring-emerald-600/20'; 
+        case 'Suspended':
+            return 'bg-amber-50 text-amber-700 border-amber-200 ring-amber-600/20'; 
         case 'Repealed': 
-        case 'Superseded': return 'bg-red-50 text-red-700 border-red-200 ring-red-600/20';
-        default: return 'bg-gray-50 text-gray-700 border-gray-200 ring-gray-500/10';
+        case 'Superseded': 
+            return 'bg-red-50 text-red-700 border-red-200 ring-red-600/20'; 
+        default: 
+            return 'bg-white text-gray-700 border-gray-200 ring-gray-500/10';
     }
 };
 
@@ -101,7 +125,7 @@ const getSponsors = (depts: any[]) => {
 <template>
     <Head title="Public Records" />
 
-    <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <div class="min-h-screen flex flex-col bg-gray-50 font-sans text-gray-900">
         
         <header class="bg-white shadow-sm border-b sticky top-0 z-20">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -153,7 +177,7 @@ const getSponsors = (depts: any[]) => {
             </div>
         </div>
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <main class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <div v-if="records.data.length > 0" class="grid gap-6">
                 
                 <div v-for="item in records.data" :key="item.id" 
@@ -204,7 +228,7 @@ const getSponsors = (depts: any[]) => {
                                     <div class="flex items-start gap-2">
                                         <LinkIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
                                         <div>
-                                            <p class="font-semibold text-xs uppercase tracking-wide text-blue-600 mb-0.5">Changes / Amends:</p>
+                                            <p class="font-semibold text-xs uppercase tracking-wide text-blue-600 mb-0.5">{{ item.relationship_type || 'Related To' }}:</p>
                                             <p class="font-medium">
                                                 {{ activeTab === 'eo' ? item.parent_e_o?.eo_number : item.parent_ordinance?.ordinance_number }}
                                             </p>
@@ -223,7 +247,7 @@ const getSponsors = (depts: any[]) => {
                                     <div v-for="child in item.amendments" :key="child.id" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-red-700 bg-red-50 p-2.5 rounded border border-red-100">
                                         <div class="flex items-center gap-2">
                                             <AlertCircle class="w-3 h-3 shrink-0" />
-                                            <span>Amended by <strong>{{ activeTab === 'eo' ? child.eo_number : child.ordinance_number }}</strong></span>
+                                            <span>{{ getPastTenseAction(child.relationship_type) }} by <strong>{{ activeTab === 'eo' ? child.eo_number : child.ordinance_number }}</strong></span>
                                         </div>
                                         <a v-if="child.file_url" 
                                            :href="child.file_url" 

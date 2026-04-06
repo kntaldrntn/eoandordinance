@@ -14,6 +14,10 @@ class ImplementingRuleandRegulation extends Model
     protected $guarded = [];
     protected $appends = ['file_url'];
 
+    protected $casts = [
+        'support_office_ids' => 'array',
+    ];
+
     public function getFileUrlAttribute()
     {
         return $this->file_path ? Storage::url($this->file_path) : null;

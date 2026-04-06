@@ -36,8 +36,7 @@ class DashboardController extends Controller
         $total_ordinances = $applyFilters(Ordinance::query(), 'date_enacted')->count();
         $total_filtered = $total_eos + $total_ordinances;
 
-        // Pending IRRs (Count only "Drafting" or "Pending")
-        $pending_irrs = ImplementingRuleandRegulation::whereIn('status', ['Drafting', 'Pending Approval'])->count();
+        $ords_with_irrs = $applyFilters(Ordinance::has('implementingRules'), 'date_enacted')->count();
 
         // Active Offices (Count unique offices involved in the filtered result)
         $active_offices = DB::table('eo_department')
@@ -128,7 +127,7 @@ class DashboardController extends Controller
                 'total_eos' => $total_eos,
                 'total_ordinances' => $total_ordinances,
                 'issued_this_year' => $total_filtered,
-                'pending_irrs' => $pending_irrs,
+                'ords_with_irrs' => $ords_with_irrs,
                 'active_offices' => $active_offices,
             ],
             'chart' => [

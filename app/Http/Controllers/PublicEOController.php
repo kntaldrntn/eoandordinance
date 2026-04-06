@@ -18,7 +18,7 @@ class PublicEOController extends Controller
         $isActive = $request->is_active;
 
         $irrFilter = function($q) {
-            $q->whereIn('status', ['Approved', 'Implemented'])
+            $q->whereIn('status', ['Active', 'Implemented'])
               ->with('leadOffice'); 
         };
 
@@ -31,22 +31,26 @@ class PublicEOController extends Controller
                 'amendments'
             ]);
             
+            // CHANGED: Deep Search for Ordinances
             if ($search) {
                 $query->where(function($q) use ($search) {
                     $q->where('ordinance_number', 'LIKE', "%{$search}%")
-                      ->orWhere('title', 'LIKE', "%{$search}%");
+                      ->orWhere('title', 'LIKE', "%{$search}%")
+                      ->orWhere('subject_matter', 'LIKE', "%{$search}%")
+                      // This deep-searches the JSON for author/sponsor names
+                      ->orWhereRaw('LOWER(author_details) LIKE ?', ['%'.strtolower($search).'%']);
                 });
             }
             
             if ($year) {
-                $query->whereYear('date_enacted', $year); // Fixed this! It was accidentally replaced.
+                $query->whereYear('date_enacted', $year); 
             }
 
             if ($isActive && $isActive !== 'all') {
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
             
-            // ADDED: The numerical tie-breaker for Ordinances
+            // The numerical tie-breaker for Ordinances
             $query->orderBy('id', 'desc');
 
         } else {
@@ -58,10 +62,14 @@ class PublicEOController extends Controller
                 'amendments'
             ]);
 
+            // CHANGED: Deep Search for Executive Orders
             if ($search) {
                 $query->where(function($q) use ($search) {
                     $q->where('eo_number', 'LIKE', "%{$search}%")
-                      ->orWhere('title', 'LIKE', "%{$search}%");
+                      ->orWhere('title', 'LIKE', "%{$search}%")
+                      ->orWhere('subject_matter', 'LIKE', "%{$search}%")
+                      // This deep-searches the JSON for committee member names
+                      ->orWhereRaw('LOWER(committee_details) LIKE ?', ['%'.strtolower($search).'%']);
                 });
             }
 
@@ -73,7 +81,7 @@ class PublicEOController extends Controller
                 $query->where('is_active', $isActive === 'active' ? 1 : 0);
             }
             
-            // ADDED: The numerical tie-breaker for Executive Orders
+            // The numerical tie-breaker for Executive Orders
             $query->orderBy('id', 'desc');
         }
 

@@ -35,7 +35,8 @@ class EOController extends Controller
         $eos = $query->orderBy('id', 'desc')
                      ->paginate(10)
                      ->withQueryString();
-        // --- NEW: Combine Internal and External members into a single suggestive list ---
+                     
+        // --- Combine Internal and External members into a single suggestive list ---
         $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
             return [
                 'name' => $e->full_name,
@@ -57,7 +58,7 @@ class EOController extends Controller
         return Inertia::render('eo/Index', [
             'eos' => $eos,
             'departments' => Department::orderBy('name')->get(),
-            'peopleRegistry' => $peopleRegistry, // <--- Passed to Frontend
+            'peopleRegistry' => $peopleRegistry, 
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
             'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title')->orderBy('eo_number', 'desc')->get(),
             'filters' => $request->only(['search']),
@@ -74,6 +75,8 @@ class EOController extends Controller
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number',
             'title' => 'required|string|max:500',
+            'subject_matter' => 'nullable|string', // <--- ADDED
+            'classification' => 'nullable|string', // <--- ADDED
             'date_issued' => 'required|date',
             'effectivity_date' => 'nullable|date',
             'legal_basis' => 'nullable|string',
@@ -95,9 +98,14 @@ class EOController extends Controller
 
                 if ($parentEO) {
                     if ($action === 'Amends') {
-                        $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                        $parentEO->update([
+                            'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
+                        ]);
                     } elseif ($action === 'Repeals') {
-                        $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
+                        $parentEO->update([
+                            'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
+                            'is_active' => false
+                        ]);
                     } elseif ($action === 'Supplements') {
                         $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
                         if ($parentEO->status_id != $activeId) {
@@ -115,6 +123,8 @@ class EOController extends Controller
                 'remarks' => $validated['remarks'] ?? null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
+                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
+                'classification' => $validated['classification'] ?? null, // <--- ADDED
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
@@ -147,6 +157,8 @@ class EOController extends Controller
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number,' . $eo->id, 
             'title' => 'required|string|max:500',
+            'subject_matter' => 'nullable|string', // <--- ADDED
+            'classification' => 'nullable|string', // <--- ADDED
             'date_issued' => 'required|date',
             'effectivity_date' => 'nullable|date',
             'legal_basis' => 'nullable|string',
@@ -170,9 +182,19 @@ class EOController extends Controller
 
                     if ($parentEO) {
                         if ($action === 'Amends') {
-                            $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')]);
+                            $parentEO->update([
+                                'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
+                            ]);
                         } elseif ($action === 'Repeals') {
-                            $parentEO->update(['status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id')]);
+                            $parentEO->update([
+                                'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
+                                'is_active' => false
+                            ]);
+                        } elseif ($action === 'Supplements') {
+                             $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
+                             if ($parentEO->status_id != $activeId) {
+                                  $parentEO->update(['status_id' => $activeId]);
+                             }
                         }
                     }
                 }
@@ -191,6 +213,8 @@ class EOController extends Controller
                 'remarks' => $validated['remarks'] ?? null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
+                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
+                'classification' => $validated['classification'] ?? null, // <--- ADDED
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],

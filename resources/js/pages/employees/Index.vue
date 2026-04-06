@@ -233,7 +233,7 @@ const getStatusBadge = (isActive: boolean) => {
                                 <Users class="w-5 h-5 text-blue-600" />
                                 {{ isEdit ? 'Edit Employee' : 'Add Employee' }}
                             </h2>
-                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1.5 transition">×</button>
+                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
                         </div>
 
                         <form @submit.prevent="submitForm" class="space-y-4">

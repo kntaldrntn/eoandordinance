@@ -73,7 +73,41 @@ const selectedRecord = ref<any>(null);
 
 const officeSearchQuery = ref('');
 
-// --- SUGGESTIVE INPUT LOGIC ---
+// --- PARENT EO SUGGESTIVE SEARCH ---
+const parentSearchQuery = ref('');
+const showParentDropdown = ref(false);
+
+const filteredParents = computed(() => {
+    let list = props.existing_eos || [];
+    
+    if (isEdit.value && editingId.value) {
+        list = list.filter(e => e.id !== editingId.value);
+    }
+    
+    if (parentSearchQuery.value) {
+        const q = parentSearchQuery.value.toLowerCase();
+        list = list.filter(e => 
+            e.eo_number.toLowerCase().includes(q) || 
+            (e.title && e.title.toLowerCase().includes(q))
+        );
+    }
+    
+    return list.slice(0, 15);
+});
+
+const selectParent = (parent: any) => {
+    form.amends_eo_id = parent.id;
+    parentSearchQuery.value = `${parent.eo_number} - ${parent.title}`;
+    showParentDropdown.value = false;
+};
+
+const clearParent = () => {
+    form.amends_eo_id = '';
+    parentSearchQuery.value = '';
+    form.relationship_type = 'Amends'; 
+};
+
+// --- SUGGESTIVE INPUT LOGIC (PEOPLE) ---
 const activeSuggestion = ref<string | null>(null);
 
 const getSuggestions = (query: any, typeFilter: string | null = null) => {
@@ -169,6 +203,8 @@ const form = useForm({
     remarks: '',
     eo_number: '',
     title: '',
+    subject_matter: '', 
+    classification: '', 
     date_issued: '',
     effectivity_date: '',
     legal_basis: '',
@@ -191,6 +227,7 @@ function openAddDialog() {
     selectedRecord.value = null;
     activeModalTab.value = 'details';
     officeSearchQuery.value = '';
+    parentSearchQuery.value = ''; 
 
     form.reset();
     form.clearErrors();
@@ -209,6 +246,8 @@ function openEditDialog(eo: any) {
     
     form.eo_number = eo.eo_number;
     form.title = eo.title;
+    form.subject_matter = eo.subject_matter || '';
+    form.classification = eo.classification || '';
     form.date_issued = eo.date_issued ? eo.date_issued.split('T')[0] : '';
     form.effectivity_date = eo.effectivity_date ? eo.effectivity_date.split('T')[0] : '';
     form.legal_basis = eo.legal_basis || '';
@@ -218,6 +257,13 @@ function openEditDialog(eo: any) {
     form.amends_eo_id = eo.amends_eo_id || '';
     form.relationship_type = eo.relationship_type || 'Amends'; 
     form.remarks = eo.remarks || '';
+
+    if (eo.amends_eo_id) {
+        const parent = props.existing_eos.find(e => e.id === eo.amends_eo_id);
+        parentSearchQuery.value = parent ? `${parent.eo_number} - ${parent.title}` : '';
+    } else {
+        parentSearchQuery.value = '';
+    }
 
     form.committee_details = eo.committee_details || defaultCommitteeDetails();
 
@@ -259,14 +305,14 @@ function handleFileChange(e: Event) {
 
 function submitForm() {
     if (isEdit.value && editingId.value) {
-        // Appends PUT for updating existing records
         form.transform((data) => ({ ...data, _method: 'PUT' })).post(route('eo.update', editingId.value), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
+            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
         });
     } else {
-        // Clears the transform memory so it sends a normal POST for new records!
         form.transform((data) => data).post(route('eo.store'), {
             onSuccess: () => { showDialog.value = false; form.reset(); },
+            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
         });
     }
 }
@@ -402,7 +448,7 @@ const getLeadOffice = (depts: any[]) => {
                                 </h2>
                                 <p class="text-xs text-gray-500 mt-1">{{ isEdit ? 'Update details.' : 'Create a new record.' }}</p>
                             </div>
-                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1.5 transition">×</button>
+                            <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
                         </div>
 
                         <div v-if="isEdit" class="flex items-center gap-6 border-b border-gray-100 mb-6">
@@ -418,18 +464,35 @@ const getLeadOffice = (depts: any[]) => {
                         <form @submit.prevent="submitForm" class="space-y-5">
                             
                             <div v-show="activeModalTab === 'details'" class="space-y-5">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-gray-700">EO Number</label>
                                         <input v-model="form.eo_number" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
                                         <p v-if="form.errors.eo_number" class="text-[10px] text-red-500 mt-1">{{ form.errors.eo_number }}</p>
                                     </div>
-                                    <div class="space-y-3">
+                                    
+                                    <div>
                                         <label class="mb-1 block text-sm font-medium text-gray-700">Legal Status</label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required>
                                             <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                         </select>
-                                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200 px-3">
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Classification</label>
+                                        <select v-model="form.classification" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="">Select Classification</option>
+                                            <option value="Administrative">Administrative</option>
+                                            <option value="Financial">Financial</option>
+                                            <option value="Education">Education</option>
+                                            <option value="Personnel">Personnel</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-transparent select-none" aria-hidden="true">Spacer</label>
+                                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 h-[42px]">
                                             <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Active Status</span>
                                             <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
                                                 <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'" />
@@ -438,14 +501,21 @@ const getLeadOffice = (depts: any[]) => {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Title / Subject</label>
-                                    <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full title..."></textarea>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Executive Order Title</label>
+                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full title..." required></textarea>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Subject Matter</label>
+                                        <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief summary of the subject matter..."></textarea>
+                                    </div>
                                 </div>
 
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-gray-700">Legal Basis</label>
-                                    <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. LGC Section 455" />
+                                    <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. LGC Section 455" required />
                                 </div>
 
                                 <div class="p-4 bg-amber-50/50 rounded-xl border border-amber-100 space-y-4">
@@ -453,13 +523,39 @@ const getLeadOffice = (depts: any[]) => {
                                         <Info class="w-4 h-4" /> Legal Context (Transparency)
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="mb-1 block text-xs font-medium text-amber-900">Target EO (Parent)</label>
-                                            <select v-model="form.amends_eo_id" class="w-full rounded-lg border border-amber-200 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                                                <option value="">None (New Parent)</option>
-                                                <option v-for="ex in existing_eos" :key="ex.id" :value="ex.id">{{ ex.eo_number }} - {{ ex.title }}</option>
-                                            </select>
+                                        
+                                        <div class="relative">
+                                            <label class="mb-1 block text-xs font-medium text-amber-900">Previous EO Amended?</label>
+                                            
+                                            <div class="relative">
+                                                <input 
+                                                    type="text" 
+                                                    v-model="parentSearchQuery"
+                                                    @focus="showParentDropdown = true"
+                                                    @input="form.amends_eo_id = ''; showParentDropdown = true" 
+                                                    @blur="setTimeout(() => showParentDropdown = false, 200)"
+                                                    class="w-full rounded-lg border border-amber-200 px-3 py-2 pr-8 bg-white outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                                                    placeholder="Search EO Number or Title..."
+                                                />
+                                                <button v-if="form.amends_eo_id || parentSearchQuery" @click="clearParent" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-amber-400 hover:text-amber-600 transition">
+                                                    <XCircle class="w-4 h-4" />
+                                                </button>
+                                            </div>
+
+                                            <div v-if="showParentDropdown && filteredParents.length > 0" class="absolute z-50 w-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="ex in filteredParents" :key="ex.id"
+                                                     @mousedown.prevent="selectParent(ex)"
+                                                     class="px-3 py-2 hover:bg-amber-50 cursor-pointer border-b border-amber-50 last:border-0 text-sm transition-colors">
+                                                    <div class="font-bold text-amber-900">{{ ex.eo_number }}</div>
+                                                    <div class="text-xs text-gray-500 truncate">{{ ex.title }}</div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div v-else-if="showParentDropdown && parentSearchQuery" class="absolute z-50 w-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg p-3 text-xs text-gray-500 text-center">
+                                                No matching records found.
+                                            </div>
                                         </div>
+
                                         <div v-if="form.amends_eo_id">
                                             <label class="mb-1 block text-xs font-medium text-amber-900">Action Type</label>
                                             <select v-model="form.relationship_type" class="w-full rounded-lg border border-amber-200 px-3 py-2 bg-white text-xs font-bold uppercase focus:ring-2 focus:ring-amber-500">
@@ -479,6 +575,7 @@ const getLeadOffice = (depts: any[]) => {
                                 <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100/80 space-y-4">
                                     <div><label class="mb-2 block text-sm font-semibold text-blue-900">Lead Office</label>
                                         <select v-model="form.lead_office_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none">
+                                            <option value="" disabled>Select Office...</option>
                                             <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                         </select>
                                     </div>
@@ -603,7 +700,7 @@ const getLeadOffice = (depts: any[]) => {
                                                     rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="List external representatives..."></textarea>
                                                 
                                                 <div v-if="activeSuggestion === 'council_external' && getSuggestions(form.committee_details.council.external_members, 'External').length > 0" 
-                                                     class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                 class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                     <div v-for="(person, idx) in getSuggestions(form.committee_details.council.external_members, 'External')" :key="idx"
                                                          @mousedown.prevent="selectPerson('council_external', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">

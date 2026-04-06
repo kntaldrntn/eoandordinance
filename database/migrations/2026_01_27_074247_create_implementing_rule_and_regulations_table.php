@@ -21,8 +21,8 @@ return new class extends Migration
             $table->string('file_path'); // The PDF
             
             // This status tracks the progress of the IMPLEMENTATION, not the EO validity
-            $table->enum('status', ['Drafting', 'Pending Approval', 'Approved', 'Implemented', 'Delayed'])
-                ->default('Drafting');
+            $table->enum('status', ['Active', 'On-hold', 'Dropped'])
+                ->default('Active');
 
             // Who is responsible for this rule?
             $table->foreignId('lead_office_id')->constrained('departments');

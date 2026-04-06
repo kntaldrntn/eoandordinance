@@ -27,6 +27,7 @@ import {
     Building2,
     BookOpen,
     Users,
+    FileSpreadsheet,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -47,7 +48,7 @@ const platformItems = computed(() => {
             roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
         {
-            title: 'EO Profiling',
+            title: 'Executive Orders',
             href: route('eo.index'),
             icon: FileText,
             roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
@@ -56,6 +57,12 @@ const platformItems = computed(() => {
             title: 'Ordinances',
             href: route('ordinances.index'),
             icon: ScrollText,
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
+        },
+         {
+            title: 'Reports',
+            href: route('reports.index'),
+            icon: FileSpreadsheet,
             roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
         },
     ];
@@ -127,7 +134,7 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <!-- <NavFooter :items="footerNavItems" /> -->
             <NavUser />
         </SidebarFooter>
     </Sidebar>

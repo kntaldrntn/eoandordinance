@@ -18,6 +18,9 @@ class Ordinance extends Model
         'is_active' => 'boolean',
         'date_enacted' => 'datetime',
         'date_approved' => 'datetime',
+        'effectivity_date' => 'date',
+        'is_active' => 'boolean',
+        'author_details' => 'array',
     ];
 
     // 2. ADDED: Scope
