@@ -24,15 +24,12 @@ export default defineConfig({
             },
         }),
     ],
-    //  COMMENT OUT THIS ENTIRE SECTION
-    /*
     server: {
         host: '0.0.0.0',
         port: 5173,
         hmr: {
-            host: '192.168.4.16',
+            host: '192.168.4.43',
         },
         cors: true, // for localhost
     },
-    */
 });

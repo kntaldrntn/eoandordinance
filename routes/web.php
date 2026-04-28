@@ -6,6 +6,7 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EOController;
 use App\Http\Controllers\ExternalMemberController;
 use App\Http\Controllers\IRRController;
+use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\OrdinanceController;
 use App\Http\Controllers\PublicEOController;
 use App\Http\Controllers\StatusController;
@@ -33,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('ordinances', OrdinanceController::class);
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/generate', [ReportController::class, 'generate'])->name('reports.generate');
+    Route::resource('membership', MembershipController::class);
 });
 
 require __DIR__.'/settings.php';

@@ -26,7 +26,7 @@ class PublicEOController extends Controller
             $query = Ordinance::with([
                 'status', 
                 'departments',                  
-                'implementingRules' => $irrFilter, // Ordinances keep their IRRs!
+                'implementingRules' => $irrFilter, 
                 'parentOrdinance', 
                 'amendments'
             ]);
@@ -37,8 +37,8 @@ class PublicEOController extends Controller
                     $q->where('ordinance_number', 'LIKE', "%{$search}%")
                       ->orWhere('title', 'LIKE', "%{$search}%")
                       ->orWhere('subject_matter', 'LIKE', "%{$search}%")
-                      // This deep-searches the JSON for author/sponsor names
-                      ->orWhereRaw('LOWER(author_details) LIKE ?', ['%'.strtolower($search).'%']);
+
+                      ->orWhereRaw('LOWER(author_details) LIKE ?', ['%'.strtolower($search).'%']); // ADDED TRACKS THE JSON FOR COMMITTEE MEMBER NAMES
                 });
             }
             

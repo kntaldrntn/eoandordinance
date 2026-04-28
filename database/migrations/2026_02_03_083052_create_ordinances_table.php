@@ -25,7 +25,7 @@ return new class extends Migration
             $table->foreignId('status_id')->constrained('statuses');
             
             // "Display scanned file"
-            $table->string('file_path');
+            $table->string('file_path')->nullable();
 
             // --- 2. TRACKING / HISTORY MODULE ---
             // "Parent-child relationship" (Points to another Ordinance ID)

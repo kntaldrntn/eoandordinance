@@ -28,6 +28,7 @@ import {
     BookOpen,
     Users,
     FileSpreadsheet,
+    BookUser,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -40,33 +41,52 @@ const userRole = computed(() => {
 
 // --- PLATFORM LINKS ---
 const platformItems = computed(() => {
+    // Extract user details for easier checking
+    const role = userRole.value;
+    const deptId = Number(user.value?.department_id); // Cast to number just in case it comes as a string
+
     const menuConfig = [
         {
             title: 'Dashboard',
             href: dashboard(), 
             icon: LayoutGrid,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            show: true // Always show to allowed roles
         },
         {
             title: 'Executive Orders',
             href: route('eo.index'),
             icon: FileText,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            // HIDE if they are a supervisor but NOT department 6
+            show: true // Always show to allowed roles
         },
         {
             title: 'Ordinances',
             href: route('ordinances.index'),
             icon: ScrollText,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            // HIDE if they are a supervisor but NOT department 8
+            show: true // Always show to allowed roles
         },
-         {
+        {
             title: 'Reports',
             href: route('reports.index'),
             icon: FileSpreadsheet,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee']
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            show: true // Always show to allowed roles
         },
+        {
+            title: 'Membership',
+            href: route('membership.index'),
+            icon:  BookUser,
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            show: true // Always show to allowed roles
+        }
     ];
-    return menuConfig.filter(item => item.roles.includes(userRole.value));
+
+    // Filter by BOTH the allowed roles array AND our custom show condition
+    return menuConfig.filter(item => item.roles.includes(role) && item.show !== false);
 });
 
 // --- SETTINGS LINKS ---

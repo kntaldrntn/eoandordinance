@@ -32,11 +32,8 @@ class EOController extends Controller
             });
         }
 
-        $eos = $query->orderBy('id', 'desc')
-                     ->paginate(10)
-                     ->withQueryString();
+        $eos = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
                      
-        // --- Combine Internal and External members into a single suggestive list ---
         $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
             return [
                 'name' => $e->full_name,
@@ -59,7 +56,7 @@ class EOController extends Controller
             'eos' => $eos,
             'departments' => Department::orderBy('name')->get(),
             'peopleRegistry' => $peopleRegistry, 
-            'statuses' => DB::table('statuses')->orderBy('name')->get(),
+            'statuses' => DB::table('statuses')->orderBy('id')->get(),
             'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title')->orderBy('eo_number', 'desc')->get(),
             'filters' => $request->only(['search']),
             'flash' => [
@@ -74,73 +71,61 @@ class EOController extends Controller
         $validated = $request->validate([
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number',
-            'title' => 'required|string|max:500',
-            'subject_matter' => 'nullable|string', // <--- ADDED
-            'classification' => 'nullable|string', // <--- ADDED
+            'title' => 'required|string|max:1000',
+            'classification' => 'nullable|string',
             'date_issued' => 'required|date',
-            'effectivity_date' => 'nullable|date',
+            'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
             'legal_basis' => 'nullable|string',
-            'lead_office_id' => 'required|exists:departments,id',
+            'lead_office_id' => 'nullable|exists:departments,id',
             'support_office_ids' => 'nullable|array',
-            'support_office_ids.*' => 'exists:departments,id',
             'status_id' => 'required|exists:statuses,id',
-            'file' => 'required|file|mimes:pdf|max:10240',
-            'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
-            'remarks' => 'nullable|string',
+            'file' => 'nullable|file|mimes:pdf|max:20480',
             'is_active' => 'boolean', 
             'committee_details' => 'nullable|array', 
         ]);
 
         DB::transaction(function () use ($request, $validated) {
-            if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
-                $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
-                $action = $validated['relationship_type'];
+            
+            // REVERSE LOGIC: Update the OLD parent EO to "Amended"
+            if (!empty($validated['amends_eo_id'])) {
+                $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
+                $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
+                $amendedStatusId = $amendedStatus ? $amendedStatus->id : DB::table('statuses')->insertGetId(['name' => 'Amended']);
 
-                if ($parentEO) {
-                    if ($action === 'Amends') {
-                        $parentEO->update([
-                            'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
-                        ]);
-                    } elseif ($action === 'Repeals') {
-                        $parentEO->update([
-                            'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
-                            'is_active' => false
-                        ]);
-                    } elseif ($action === 'Supplements') {
-                        $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
-                        if ($parentEO->status_id != $activeId) {
-                             $parentEO->update(['status_id' => $activeId]);
-                        }
-                    }
+                if ($oldEO) {
+                    $oldEO->update([
+                        'status_id' => $amendedStatusId, 
+                        'is_active' => false 
+                    ]);
                 }
             }
 
-            $path = $request->file('file')->store('eos', 'public');
+            $path = $request->hasFile('file') ? $request->file('file')->store('eos', 'public') : null;
 
             $eo = ExecutiveOrder::create([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
-                'relationship_type' => $validated['relationship_type'] ?? null,
-                'remarks' => $validated['remarks'] ?? null,
+                'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
-                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
-                'classification' => $validated['classification'] ?? null, // <--- ADDED
+                'classification' => $validated['classification'] ?? null,
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'issuing_authority' => 'City Mayor',
-                'status_id' => $validated['status_id'],
+                'status_id' => $validated['status_id'], 
                 'is_active' => $validated['is_active'] ?? true, 
                 'committee_details' => $validated['committee_details'] ?? null,
                 'file_path' => $path,
             ]);
 
-            $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
+            if (!empty($validated['lead_office_id'])) {
+                $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
+            }
 
             if (!empty($validated['support_office_ids'])) {
                 $supportData = [];
                 foreach ($validated['support_office_ids'] as $id) {
-                    if ($id != $validated['lead_office_id']) {
+                    if ($id != ($validated['lead_office_id'] ?? 0)) {
                         $supportData[$id] = ['role' => 'support'];
                     }
                 }
@@ -156,47 +141,29 @@ class EOController extends Controller
         $validated = $request->validate([
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number,' . $eo->id, 
-            'title' => 'required|string|max:500',
-            'subject_matter' => 'nullable|string', // <--- ADDED
-            'classification' => 'nullable|string', // <--- ADDED
+            'title' => 'required|string|max:1000',
+            'classification' => 'nullable|string',
             'date_issued' => 'required|date',
-            'effectivity_date' => 'nullable|date',
+            'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
             'legal_basis' => 'nullable|string',
-            'lead_office_id' => 'required|exists:departments,id',
+            'lead_office_id' => 'nullable|exists:departments,id',
             'support_office_ids' => 'nullable|array',
             'status_id' => 'required|exists:statuses,id',
-            'file' => 'nullable|file|mimes:pdf|max:10240',
-            'relationship_type' => 'nullable|string|in:Amends,Repeals,Supplements',
-            'remarks' => 'nullable|string',
+            'file' => 'nullable|file|mimes:pdf|max:20480',
             'is_active' => 'boolean',
             'committee_details' => 'nullable|array', 
         ]);
 
         DB::transaction(function () use ($request, $validated, $eo) {
             
-            if (!empty($validated['amends_eo_id']) && !empty($validated['relationship_type'])) {
-                if ($eo->amends_eo_id != $validated['amends_eo_id'] || $eo->relationship_type != $validated['relationship_type']) {
-                    
-                    $parentEO = ExecutiveOrder::find($validated['amends_eo_id']);
-                    $action = $validated['relationship_type'];
+            // Handle Parent logic on Update as well
+            if (!empty($validated['amends_eo_id']) && $eo->amends_eo_id != $validated['amends_eo_id']) {
+                $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
+                $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
+                $amendedStatusId = $amendedStatus ? $amendedStatus->id : DB::table('statuses')->insertGetId(['name' => 'Amended']);
 
-                    if ($parentEO) {
-                        if ($action === 'Amends') {
-                            $parentEO->update([
-                                'status_id' => DB::table('statuses')->where('name', 'Amended')->value('id')
-                            ]);
-                        } elseif ($action === 'Repeals') {
-                            $parentEO->update([
-                                'status_id' => DB::table('statuses')->where('name', 'Repealed')->value('id'),
-                                'is_active' => false
-                            ]);
-                        } elseif ($action === 'Supplements') {
-                             $activeId = DB::table('statuses')->where('name', 'Active')->value('id'); 
-                             if ($parentEO->status_id != $activeId) {
-                                  $parentEO->update(['status_id' => $activeId]);
-                             }
-                        }
-                    }
+                if ($oldEO) {
+                    $oldEO->update(['status_id' => $amendedStatusId, 'is_active' => false]);
                 }
             }
 
@@ -209,12 +176,10 @@ class EOController extends Controller
 
             $eo->update([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
-                'relationship_type' => $validated['relationship_type'] ?? null,
-                'remarks' => $validated['remarks'] ?? null,
+                'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
-                'subject_matter' => $validated['subject_matter'] ?? null, // <--- ADDED
-                'classification' => $validated['classification'] ?? null, // <--- ADDED
+                'classification' => $validated['classification'] ?? null,
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
@@ -224,12 +189,13 @@ class EOController extends Controller
             ]);
 
             $eo->departments()->detach();
-            $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
-
+            if (!empty($validated['lead_office_id'])) {
+                $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
+            }
             if (!empty($validated['support_office_ids'])) {
                 $supportData = [];
                 foreach ($validated['support_office_ids'] as $id) {
-                    if ($id != $validated['lead_office_id']) {
+                    if ($id != ($validated['lead_office_id'] ?? 0)) {
                         $supportData[$id] = ['role' => 'support'];
                     }
                 }

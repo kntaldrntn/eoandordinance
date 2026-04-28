@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { 
     Search, Calendar, Download, Building2, Paperclip, 
     AlertCircle, Link as LinkIcon, UserCheck, Gavel, ChevronDown, ChevronUp,
-    CheckCircle2, XCircle, Users // <--- Added Users icon
+    CheckCircle2, XCircle, Users 
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
@@ -71,19 +71,16 @@ const getPastTenseAction = (type: string) => {
     if (type === 'Repeals') return 'Repealed';
     if (type === 'Supersedes') return 'Superseded';
     if (type === 'Supplements') return 'Supplemented';
-    return 'Amended'; // Fallback
+    return 'Amended'; 
 };
 
 const getStatusColor = (statusName: string) => {
-    // FORMALITY: Standard statuses are now clean and neutral
     switch(statusName) {
         case 'Active': 
         case 'In Effect': 
             return 'bg-white text-gray-800 border-gray-300 ring-gray-900/10 font-bold';
         case 'Inactive': 
             return 'bg-gray-100 text-gray-500 border-gray-200 ring-gray-500/10';
-        
-        // LEGAL ACTIONS: Distinct colors so amendments/repeals stand out
         case 'Amended': 
             return 'bg-blue-50 text-blue-700 border-blue-200 ring-blue-600/20'; 
         case 'Supplements': 
@@ -299,12 +296,17 @@ const getSponsors = (depts: any[]) => {
                                 </button>
                                 
                                 <button 
-                                    v-if="activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none'" 
+                                    v-if="(activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none') || (activeTab === 'ordinance' && item.author_details)" 
                                     @click="openCommitteeModal(item)" 
                                     class="text-xs font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors"
                                 >
                                     <Users class="w-3.5 h-3.5" /> 
-                                    View {{ item.committee_details.type === 'council' ? 'Committee Members' : 'Program Details' }}
+                                    <template v-if="activeTab === 'eo'">
+                                        View {{ item.committee_details.type === 'council' ? 'Committee Members' : 'Program Details' }}
+                                    </template>
+                                    <template v-else>
+                                        View Authors & Sponsors
+                                    </template>
                                 </button>
                             </div>
 
@@ -349,9 +351,16 @@ const getSponsors = (depts: any[]) => {
                         <div>
                             <h3 class="text-white font-bold text-lg flex items-center gap-2">
                                 <Users class="w-5 h-5 text-blue-200" />
-                                {{ selectedCommittee.committee_details.type === 'council' ? 'Council & Committee Structure' : 'Program Implementation Details' }}
+                                <template v-if="activeTab === 'eo'">
+                                    {{ selectedCommittee.committee_details.type === 'council' ? 'Council & Committee Structure' : 'Program Implementation Details' }}
+                                </template>
+                                <template v-else>
+                                    Authors & Sponsorship Details
+                                </template>
                             </h3>
-                            <p class="text-blue-200 text-xs mt-0.5">{{ selectedCommittee.eo_number }}</p>
+                            <p class="text-blue-200 text-xs mt-0.5">
+                                {{ activeTab === 'eo' ? selectedCommittee.eo_number : selectedCommittee.ordinance_number }}
+                            </p>
                         </div>
                         <button @click="showCommitteeModal = false" class="text-blue-200 hover:text-white bg-blue-700/50 hover:bg-blue-700 rounded-full p-1.5 transition">
                             <XCircle class="w-5 h-5" />
@@ -360,85 +369,108 @@ const getSponsors = (depts: any[]) => {
 
                     <div class="p-6 overflow-y-auto bg-gray-50/50">
                         
-                        <div v-if="selectedCommittee.committee_details.type === 'council'" class="space-y-6">
-                            
-                            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Leadership</h4>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div v-if="selectedCommittee.committee_details.council.chairman">
-                                        <p class="text-xs text-gray-500 font-medium">Chairman</p>
-                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.chairman }}</p>
+                        <div v-if="activeTab === 'eo'">
+                            <div v-if="selectedCommittee.committee_details.type === 'council'" class="space-y-6">
+                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Leadership</h4>
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div v-if="selectedCommittee.committee_details.council.chairman">
+                                            <p class="text-xs text-gray-500 font-medium">Chairman</p>
+                                            <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.chairman }}</p>
+                                        </div>
+                                        <div v-if="selectedCommittee.committee_details.council.co_chairmans">
+                                            <p class="text-xs text-gray-500 font-medium">Co-Chairman</p>
+                                            <p class="text-sm font-bold text-gray-900 whitespace-pre-wrap">{{ selectedCommittee.committee_details.council.co_chairmans }}</p>
+                                        </div>
+                                        <div v-if="selectedCommittee.committee_details.council.vice_chairman">
+                                            <p class="text-xs text-gray-500 font-medium">Vice Chairman</p>
+                                            <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.vice_chairman }}</p>
+                                        </div>
                                     </div>
-                                    <div v-if="selectedCommittee.committee_details.council.co_chairmans">
-                                        <p class="text-xs text-gray-500 font-medium">Co-Chairman</p>
-                                        <p class="text-sm font-bold text-gray-900 whitespace-pre-wrap">{{ selectedCommittee.committee_details.council.co_chairmans }}</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.internal_members">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Members</h4>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.internal_members }}</p>
                                     </div>
-                                    <div v-if="selectedCommittee.committee_details.council.vice_chairman">
-                                        <p class="text-xs text-gray-500 font-medium">Vice Chairman</p>
-                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.vice_chairman }}</p>
+                                    <div class="space-y-4">
+                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.external_members">
+                                            <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.external_members }}</p>
+                                        </div>
+                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.secretariat">
+                                            <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Secretariat</h4>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="selectedCommittee.committee_details.council.twg_head || selectedCommittee.committee_details.council.twg_internal_members" class="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                    <h4 class="text-xs font-bold text-blue-800 uppercase tracking-widest mb-4 border-b border-blue-100 pb-2">Technical Working Group (TWG)</h4>
+                                    
+                                    <div class="mb-4" v-if="selectedCommittee.committee_details.council.twg_head">
+                                        <p class="text-xs text-blue-600 font-medium">TWG Head</p>
+                                        <p class="text-sm font-bold text-blue-900">{{ selectedCommittee.committee_details.council.twg_head }}</p>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div v-if="selectedCommittee.committee_details.council.twg_internal_members">
+                                            <p class="text-xs text-blue-600 font-medium mb-1">TWG Internal Members</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_internal_members }}</p>
+                                        </div>
+                                        <div v-if="selectedCommittee.committee_details.council.twg_external_members">
+                                            <p class="text-xs text-blue-600 font-medium mb-1">TWG External Members</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_external_members }}</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.internal_members">
-                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Members</h4>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.internal_members }}</p>
-                                </div>
-                                <div class="space-y-4">
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.external_members">
-                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.external_members }}</p>
-                                    </div>
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.secretariat">
-                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Secretariat</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat }}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div v-if="selectedCommittee.committee_details.council.twg_head || selectedCommittee.committee_details.council.twg_internal_members" class="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
-                                <h4 class="text-xs font-bold text-blue-800 uppercase tracking-widest mb-4 border-b border-blue-100 pb-2">Technical Working Group (TWG)</h4>
-                                
-                                <div class="mb-4" v-if="selectedCommittee.committee_details.council.twg_head">
-                                    <p class="text-xs text-blue-600 font-medium">TWG Head</p>
-                                    <p class="text-sm font-bold text-blue-900">{{ selectedCommittee.committee_details.council.twg_head }}</p>
-                                </div>
-                                
+                            <div v-if="selectedCommittee.committee_details.type === 'program'" class="space-y-6">
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div v-if="selectedCommittee.committee_details.council.twg_internal_members">
-                                        <p class="text-xs text-blue-600 font-medium mb-1">TWG Internal Members</p>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_internal_members }}</p>
+                                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                        <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
+                                        <p class="text-base font-bold text-blue-900">{{ getDeptName(selectedCommittee.committee_details.program.lead_office_id) }}</p>
                                     </div>
-                                    <div v-if="selectedCommittee.committee_details.council.twg_external_members">
-                                        <p class="text-xs text-blue-600 font-medium mb-1">TWG External Members</p>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_external_members }}</p>
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Co-Lead Office</h4>
+                                        <p class="text-sm font-bold text-gray-800">{{ getDeptName(selectedCommittee.committee_details.program.co_lead_office_id) }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.internal_members">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.internal_members }}</p>
+                                    </div>
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.external_members">
+                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.external_members }}</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div v-if="selectedCommittee.committee_details.type === 'program'" class="space-y-6">
-                            
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
-                                    <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
-                                    <p class="text-base font-bold text-blue-900">{{ getDeptName(selectedCommittee.committee_details.program.lead_office_id) }}</p>
+                        <div v-else-if="activeTab === 'ordinance' && selectedCommittee.author_details" class="space-y-6">
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Authorship & Sponsorship Details</h4>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
+                                    <div v-if="selectedCommittee.author_details.primary_author">
+                                        <p class="text-xs text-blue-600 font-bold mb-1">Primary Sponsor / Author</p>
+                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.author_details.primary_author }}</p>
+                                    </div>
+                                    
+                                    <div v-if="selectedCommittee.author_details.committee_chairmanship">
+                                        <p class="text-xs text-blue-600 font-bold mb-1">Committee Chairmanship(s)</p>
+                                        <p class="text-sm font-bold text-gray-900 whitespace-pre-wrap">{{ selectedCommittee.author_details.committee_chairmanship }}</p>
+                                    </div>
                                 </div>
-                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Co-Lead Office</h4>
-                                    <p class="text-sm font-bold text-gray-800">{{ getDeptName(selectedCommittee.committee_details.program.co_lead_office_id) }}</p>
-                                </div>
-                            </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.internal_members">
-                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.internal_members }}</p>
-                                </div>
-                                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.external_members">
-                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
-                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.external_members }}</p>
+                                <div v-if="selectedCommittee.author_details.co_authors" class="border-t border-gray-100 pt-4">
+                                    <p class="text-xs text-gray-500 font-bold mb-2">Co-Authors / Committee Members</p>
+                                    <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.author_details.co_authors }}</p>
                                 </div>
                             </div>
                         </div>

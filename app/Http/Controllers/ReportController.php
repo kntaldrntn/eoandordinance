@@ -24,12 +24,13 @@ class ReportController extends Controller
     {
         $records = $this->getReportData($request);
         
-        // Load the PDF view we are about to create
-        $pdf = Pdf::loadView('reports.pdf', [
-            'records' => $records,
-            'filters' => $request->all(),
-            'name' => auth()->user()->name ?? 'System Admin'
-        ])->setPaper('a4', 'landscape');
+        // 1. We add setOption(['isPhpEnabled' => true]) to allow the footer script to run!
+        $pdf = Pdf::setOption(['isPhpEnabled' => true])
+            ->loadView('reports.pdf', [
+                'records' => $records,
+                'filters' => $request->all(),
+                'name' => auth()->user()->name ?? 'System Admin'
+            ])->setPaper('a4', 'landscape');
 
         // Stream opens it in the browser so they can view before printing
         return $pdf->stream('Legislative_Report_' . date('Y-m-d') . '.pdf');
@@ -42,6 +43,7 @@ class ReportController extends Controller
         $statusId = $request->input('status_id');
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
+        $hasIrr = $request->input('has_irr'); // <--- 1. Capture the new filter
 
         $results = collect();
 
@@ -53,6 +55,13 @@ class ReportController extends Controller
             if ($dateFrom) $eoQuery->whereDate('date_issued', '>=', $dateFrom);
             if ($dateTo) $eoQuery->whereDate('date_issued', '<=', $dateTo);
             
+            // <--- 2. ADD THIS IRR FILTER CHECK --->
+            if ($hasIrr === 'yes') {
+                $eoQuery->has('implementingRules');
+            } elseif ($hasIrr === 'no') {
+                $eoQuery->doesntHave('implementingRules');
+            }
+            
             if ($search) {
                 $eoQuery->where(function($q) use ($search) {
                     $q->where('eo_number', 'LIKE', "%{$search}%")
@@ -63,10 +72,9 @@ class ReportController extends Controller
             }
 
             $eos = $eoQuery->get()->map(function($eo) {
-                // Extract Chairman or fallback to Lead Office
                 $committee = 'N/A';
                 if (!empty($eo->committee_details['council']['chairman'])) {
-                    $committee = 'Chair: ' . $eo->committee_details['council']['chairman'];
+                    $committee = 'Chairman: ' . $eo->committee_details['council']['chairman'];
                 }
 
                 return [
@@ -77,7 +85,7 @@ class ReportController extends Controller
                     'involved_parties' => $committee,
                     'date' => $eo->date_issued,
                     'status_name' => $eo->status->name ?? 'Unknown',
-                    'timestamp' => current(explode(' ', $eo->date_issued)) // For sorting
+                    'timestamp' => current(explode(' ', $eo->date_issued)) 
                 ];
             });
             $results = $results->concat($eos);
@@ -91,6 +99,13 @@ class ReportController extends Controller
             if ($dateFrom) $ordQuery->whereDate('date_enacted', '>=', $dateFrom);
             if ($dateTo) $ordQuery->whereDate('date_enacted', '<=', $dateTo);
             
+            // <--- 3. ADD THIS IRR FILTER CHECK --->
+            if ($hasIrr === 'yes') {
+                $ordQuery->has('implementingRules');
+            } elseif ($hasIrr === 'no') {
+                $ordQuery->doesntHave('implementingRules');
+            }
+            
             if ($search) {
                 $ordQuery->where(function($q) use ($search) {
                     $q->where('ordinance_number', 'LIKE', "%{$search}%")
@@ -101,7 +116,6 @@ class ReportController extends Controller
             }
 
             $ords = $ordQuery->get()->map(function($ord) {
-                // Extract Primary Author
                 $author = $ord->author_details['primary_author'] ?? 'City Council';
 
                 return [
@@ -112,13 +126,12 @@ class ReportController extends Controller
                     'involved_parties' => 'Author: ' . $author,
                     'date' => $ord->date_enacted,
                     'status_name' => $ord->status->name ?? 'Unknown',
-                    'timestamp' => current(explode(' ', $ord->date_enacted)) // For sorting
+                    'timestamp' => current(explode(' ', $ord->date_enacted)) 
                 ];
             });
             $results = $results->concat($ords);
         }
 
-        // Sort everything together by date (newest first)
         return $results->sortByDesc('timestamp')->values()->all();
     }
 }

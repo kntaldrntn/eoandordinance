@@ -4,7 +4,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
     Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users,
-    Pencil
+    Pencil, Eye
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
@@ -79,32 +79,33 @@ const showParentDropdown = ref(false);
 
 const filteredParents = computed(() => {
     let list = props.existing_eos || [];
+    if (isEdit.value && editingId.value) list = list.filter(e => e.id !== editingId.value);
     
-    if (isEdit.value && editingId.value) {
-        list = list.filter(e => e.id !== editingId.value);
-    }
-    
-    if (parentSearchQuery.value) {
+    if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
-        list = list.filter(e => 
-            e.eo_number.toLowerCase().includes(q) || 
-            (e.title && e.title.toLowerCase().includes(q))
-        );
+        list = list.filter(e => e.eo_number.toLowerCase().includes(q) || (e.title && e.title.toLowerCase().includes(q)));
     }
-    
     return list.slice(0, 15);
+});
+
+// LOGIC: Hide "Amended" from manual selection
+const selectableStatuses = computed(() => props.statuses.filter(s => s.name !== 'Amended'));
+
+// LOGIC: Show Historical Tracking if 'Amendment' is chosen
+const isAmendmentMode = computed(() => {
+    const status = props.statuses.find(s => s.id == form.status_id);
+    return status?.name === 'Amendment';
 });
 
 const selectParent = (parent: any) => {
     form.amends_eo_id = parent.id;
-    parentSearchQuery.value = `${parent.eo_number} - ${parent.title}`;
+    parentSearchQuery.value = `AMENDING: ${parent.eo_number}`;
     showParentDropdown.value = false;
 };
 
 const clearParent = () => {
     form.amends_eo_id = '';
     parentSearchQuery.value = '';
-    form.relationship_type = 'Amends'; 
 };
 
 // --- SUGGESTIVE INPUT LOGIC (PEOPLE) ---
@@ -128,10 +129,8 @@ const getSuggestions = (query: any, typeFilter: string | null = null) => {
 
     return props.peopleRegistry.filter(p => {
         if (typeFilter && p.type !== typeFilter) return false;
-
         const safeName = p.name ? String(p.name).toLowerCase() : '';
         const safeTitle = p.title ? String(p.title).toLowerCase() : '';
-        
         return safeName.includes(currentSearch) || safeTitle.includes(currentSearch);
     }).slice(0, 10);
 };
@@ -177,7 +176,6 @@ const selectPerson = (field: string, name: string) => {
             else if (field === 'program_external') form.committee_details.program.external_members = newValue;
         }
     }
-    
     activeSuggestion.value = null;
 };
 
@@ -199,11 +197,8 @@ const defaultCommitteeDetails = () => ({
 
 const form = useForm({
     amends_eo_id: '' as string | number,
-    relationship_type: 'Amends', 
-    remarks: '',
     eo_number: '',
     title: '',
-    subject_matter: '', 
     classification: '', 
     date_issued: '',
     effectivity_date: '',
@@ -246,7 +241,6 @@ function openEditDialog(eo: any) {
     
     form.eo_number = eo.eo_number;
     form.title = eo.title;
-    form.subject_matter = eo.subject_matter || '';
     form.classification = eo.classification || '';
     form.date_issued = eo.date_issued ? eo.date_issued.split('T')[0] : '';
     form.effectivity_date = eo.effectivity_date ? eo.effectivity_date.split('T')[0] : '';
@@ -255,12 +249,10 @@ function openEditDialog(eo: any) {
     form.is_active = Boolean(eo.is_active);
     
     form.amends_eo_id = eo.amends_eo_id || '';
-    form.relationship_type = eo.relationship_type || 'Amends'; 
-    form.remarks = eo.remarks || '';
 
     if (eo.amends_eo_id) {
         const parent = props.existing_eos.find(e => e.id === eo.amends_eo_id);
-        parentSearchQuery.value = parent ? `${parent.eo_number} - ${parent.title}` : '';
+        parentSearchQuery.value = parent ? `AMENDING: ${parent.eo_number}` : '';
     } else {
         parentSearchQuery.value = '';
     }
@@ -382,11 +374,7 @@ const getLeadOffice = (depts: any[]) => {
                                         
                                         <div v-if="eo.parent_e_o" class="mb-2 flex items-center gap-1 text-xs text-amber-700 font-bold bg-amber-50 px-2 py-1 rounded w-fit border border-amber-100 uppercase">
                                             <AlertCircle class="w-3.5 h-3.5" /> 
-                                            {{ eo.relationship_type }}: {{ eo.parent_e_o.eo_number }}
-                                        </div>
-
-                                        <div v-if="eo.remarks" class="mt-2 pl-3 border-l-2 border-gray-300 bg-gray-50 py-1.5 pr-3 rounded-r w-fit">
-                                            <p class="text-xs text-gray-600 italic">"{{ eo.remarks }}"</p>
+                                            Amends: {{ eo.parent_e_o.eo_number }}
                                         </div>
                                     </td>
 
@@ -405,8 +393,8 @@ const getLeadOffice = (depts: any[]) => {
 
                                     <td class="px-6 py-4 text-center align-middle">
                                         <div class="flex items-center justify-center gap-2">
-                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF">
-                                                <Download class="w-4 h-4" />
+                                            <a v-if="eo.file_url" :href="eo.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF Document">
+                                                <Eye class="w-4 h-4" />
                                             </a>
                                             <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(eo)" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
                                                 <Pencil class="w-4 h-4" />
@@ -467,21 +455,21 @@ const getLeadOffice = (depts: any[]) => {
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5">
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">EO Number</label>
-                                        <input v-model="form.eo_number" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
-                                        <p v-if="form.errors.eo_number" class="text-[10px] text-red-500 mt-1">{{ form.errors.eo_number }}</p>
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">EO Number <span class="text-red-500">*</span></label>
+                                        <input v-model="form.eo_number" type="text" placeholder="e.g. EO No. 1, s. 2026" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
                                     </div>
                                     
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Legal Status</label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required>
-                                            <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Status <span class="text-red-500">*</span></label>
+                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="" disabled>Select Status</option>
+                                            <option v-for="status in selectableStatuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                         </select>
                                     </div>
 
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Classification</label>
-                                        <select v-model="form.classification" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Classification</label>
+                                        <select v-model="form.classification" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                             <option value="">Select Classification</option>
                                             <option value="Administrative">Administrative</option>
                                             <option value="Financial">Financial</option>
@@ -492,7 +480,7 @@ const getLeadOffice = (depts: any[]) => {
 
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-transparent select-none" aria-hidden="true">Spacer</label>
-                                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 h-[42px]">
+                                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 h-[38px]">
                                             <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Active Status</span>
                                             <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
                                                 <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'" />
@@ -503,38 +491,31 @@ const getLeadOffice = (depts: any[]) => {
 
                                 <div class="space-y-4">
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Executive Order Title</label>
-                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full title..." required></textarea>
-                                    </div>
-                                    
-                                    <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Subject Matter</label>
-                                        <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief summary of the subject matter..."></textarea>
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Executive Order Title <span class="text-red-500">*</span></label>
+                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full title including subject matter..." required></textarea>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Legal Basis</label>
-                                    <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. LGC Section 455" required />
+                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Legal Basis</label>
+                                    <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. LGC Section 455" />
                                 </div>
 
-                                <div class="p-4 bg-amber-50/50 rounded-xl border border-amber-100 space-y-4">
-                                    <div class="flex items-center gap-2 text-xs font-bold text-amber-800 uppercase mb-1">
-                                        <Info class="w-4 h-4" /> Legal Context (Transparency)
-                                    </div>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        
+                                <Transition name="fade">
+                                    <div v-if="isAmendmentMode" class="p-4 bg-amber-50/50 rounded-xl border border-amber-100 space-y-4 mt-4">
+                                        <div class="flex items-center gap-2 text-xs font-bold text-amber-800 uppercase mb-1">
+                                            <Info class="w-4 h-4" /> Legal Context (Transparency)
+                                        </div>
                                         <div class="relative">
-                                            <label class="mb-1 block text-xs font-medium text-amber-900">Previous EO Amended?</label>
+                                            <label class="mb-1 block text-xs font-bold text-amber-900">PREVIOUS EO AMENDED?</label>
+                                            <p class="text-[10px] text-amber-700 italic mb-2">The selected EO will automatically be marked as "AMENDED".</p>
                                             
                                             <div class="relative">
                                                 <input 
                                                     type="text" 
                                                     v-model="parentSearchQuery"
                                                     @focus="showParentDropdown = true"
-                                                    @input="form.amends_eo_id = ''; showParentDropdown = true" 
-                                                    @blur="setTimeout(() => showParentDropdown = false, 200)"
-                                                    class="w-full rounded-lg border border-amber-200 px-3 py-2 pr-8 bg-white outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                                                    class="w-full rounded-lg border border-amber-200 text-sm px-3 py-2 pr-8 bg-white outline-none focus:ring-2 focus:ring-amber-500"
                                                     placeholder="Search EO Number or Title..."
                                                 />
                                                 <button v-if="form.amends_eo_id || parentSearchQuery" @click="clearParent" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-amber-400 hover:text-amber-600 transition">
@@ -550,47 +531,45 @@ const getLeadOffice = (depts: any[]) => {
                                                     <div class="text-xs text-gray-500 truncate">{{ ex.title }}</div>
                                                 </div>
                                             </div>
-                                            
-                                            <div v-else-if="showParentDropdown && parentSearchQuery" class="absolute z-50 w-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg p-3 text-xs text-gray-500 text-center">
-                                                No matching records found.
-                                            </div>
                                         </div>
+                                    </div>
+                                </Transition>
 
-                                        <div v-if="form.amends_eo_id">
-                                            <label class="mb-1 block text-xs font-medium text-amber-900">Action Type</label>
-                                            <select v-model="form.relationship_type" class="w-full rounded-lg border border-amber-200 px-3 py-2 bg-white text-xs font-bold uppercase focus:ring-2 focus:ring-amber-500">
-                                                <option value="Amends">Amends</option>
-                                                <option value="Repeals">Repeals</option>
-                                                <option value="Supplements">Supplements</option>
-                                            </select>
-                                        </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Date Issued <span class="text-red-500">*</span></label>
+                                        <input v-model="form.date_issued" type="date" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Date of Effectivity</label>
+                                        <input v-model="form.effectivity_date" type="date" :min="form.date_issued" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label class="mb-1 block text-sm font-medium text-gray-700">Date Issued</label><input v-model="form.date_issued" type="date" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none" /></div>
-                                    <div><label class="mb-1 block text-sm font-medium text-gray-700">Effectivity</label><input v-model="form.effectivity_date" type="date" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none" /></div>
-                                </div>
-
-                                <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100/80 space-y-4">
-                                    <div><label class="mb-2 block text-sm font-semibold text-blue-900">Lead Office</label>
-                                        <select v-model="form.lead_office_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white outline-none">
-                                            <option value="" disabled>Select Office...</option>
+                                <div class="bg-blue-50/50 p-4 rounded-xl border border-blue-100/80 space-y-4">
+                                    <div>
+                                        <label class="mb-2 block text-xs font-bold text-blue-600 uppercase">Lead Implementing Office</label>
+                                        <select v-model="form.lead_office_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="">Select Office...</option>
                                             <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <div class="flex items-center justify-between mb-2"><label class="text-sm font-semibold text-blue-900">Support Offices</label><span class="text-[10px] font-bold text-blue-500 bg-blue-100 px-2 py-0.5 rounded-full">{{ form.support_office_ids.length }} Selected</span></div>
-                                        <div class="relative mb-2"><Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input v-model="officeSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none" /></div>
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-xs font-bold text-blue-600 uppercase">Support Offices</label>
+                                            <span class="text-[10px] font-bold text-blue-500 bg-blue-100 px-2 py-0.5 rounded-full">{{ form.support_office_ids.length }} Selected</span>
+                                        </div>
+                                        <div class="relative mb-2">
+                                            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                            <input v-model="officeSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                                        </div>
                                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-white rounded-lg border border-blue-100">
-                                            <label v-for="dept in filteredDepartments" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1.5 rounded transition"><input type="checkbox" :value="dept.id" v-model="form.support_office_ids" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" /><span class="text-xs text-gray-700">{{ dept.name }}</span></label>
+                                            <label v-for="dept in filteredDepartments" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1.5 rounded transition">
+                                                <input type="checkbox" :value="dept.id" v-model="form.support_office_ids" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" />
+                                                <span class="text-xs text-gray-700">{{ dept.name }}</span>
+                                            </label>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Remarks</label>
-                                    <textarea v-model="form.remarks" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Add remarks about the EO..."></textarea>
                                 </div>
                             </div>
 
@@ -598,7 +577,7 @@ const getLeadOffice = (depts: any[]) => {
                                 
                                 <div class="flex items-center gap-4 bg-gray-50 p-2 rounded-lg border border-gray-200">
                                     <span class="text-sm font-semibold text-gray-700 ml-2">Type of Structure:</span>
-                                    <select v-model="form.committee_details.type" class="rounded-lg border-gray-300 text-sm font-medium text-blue-700 bg-white">
+                                    <select v-model="form.committee_details.type" class="rounded-lg border-gray-300 text-sm font-medium text-blue-700 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                         <option value="none">Standard EO (None)</option>
                                         <option value="council">Council / Committee / TWG</option>
                                         <option value="program">Program-Based Initiative</option>
@@ -670,7 +649,7 @@ const getLeadOffice = (depts: any[]) => {
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div class="relative">
-                                            <label class="mb-1 block text-sm font-bold text-gray-700">Internal Members</label>
+                                            <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Internal Members</label>
                                             <textarea 
                                                 v-model="form.committee_details.council.internal_members" 
                                                 @focus.stop="activeSuggestion = 'council_internal'"
@@ -691,7 +670,7 @@ const getLeadOffice = (depts: any[]) => {
 
                                         <div class="space-y-4">
                                             <div class="relative">
-                                                <label class="mb-1 block text-sm font-bold text-gray-700">External Members</label>
+                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">External Members</label>
                                                 <textarea 
                                                     v-model="form.committee_details.council.external_members" 
                                                     @focus.stop="activeSuggestion = 'council_external'"
@@ -700,7 +679,7 @@ const getLeadOffice = (depts: any[]) => {
                                                     rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="List external representatives..."></textarea>
                                                 
                                                 <div v-if="activeSuggestion === 'council_external' && getSuggestions(form.committee_details.council.external_members, 'External').length > 0" 
-                                                 class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                     class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                     <div v-for="(person, idx) in getSuggestions(form.committee_details.council.external_members, 'External')" :key="idx"
                                                          @mousedown.prevent="selectPerson('council_external', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
@@ -711,7 +690,7 @@ const getLeadOffice = (depts: any[]) => {
                                             </div>
                                             
                                             <div class="relative">
-                                                <label class="mb-1 block text-sm font-bold text-gray-700">Secretariat Members</label>
+                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Secretariat Members</label>
                                                 <textarea 
                                                     v-model="form.committee_details.council.secretariat" 
                                                     @focus.stop="activeSuggestion = 'secretariat'"
@@ -764,7 +743,7 @@ const getLeadOffice = (depts: any[]) => {
                                                         @click.stop="activeSuggestion = 'twg_external'"
                                                         @input="activeSuggestion = 'twg_external'"
                                                         rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="External experts..."></textarea>
-                                                        
+                                                    
                                                     <div v-if="activeSuggestion === 'twg_external' && getSuggestions(form.committee_details.council.twg_external_members, 'External').length > 0" 
                                                          class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                         <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_external_members, 'External')" :key="idx"
@@ -785,7 +764,7 @@ const getLeadOffice = (depts: any[]) => {
                                                     @click.stop="activeSuggestion = 'twg_internal'"
                                                     @input="activeSuggestion = 'twg_internal'"
                                                     rows="4" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="List TWG internal members..."></textarea>
-                                                    
+                                                
                                                 <div v-if="activeSuggestion === 'twg_internal' && getSuggestions(form.committee_details.council.twg_internal_members, 'Internal').length > 0" 
                                                      class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                     <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_internal_members, 'Internal')" :key="idx"
@@ -804,14 +783,14 @@ const getLeadOffice = (depts: any[]) => {
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
                                             <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Lead Implementing Office</label>
-                                            <select v-model="form.committee_details.program.lead_office_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white">
+                                            <select v-model="form.committee_details.program.lead_office_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                                 <option value="">Select Lead Office...</option>
                                                 <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Lead Office</label>
-                                            <select v-model="form.committee_details.program.co_lead_office_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white">
+                                            <select v-model="form.committee_details.program.co_lead_office_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                                 <option value="">Select Co-Lead Office...</option>
                                                 <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                             </select>
@@ -820,14 +799,14 @@ const getLeadOffice = (depts: any[]) => {
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div class="relative">
-                                            <label class="mb-1 block text-sm font-bold text-gray-700">Internal Members</label>
+                                            <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Internal Members</label>
                                             <textarea 
                                                 v-model="form.committee_details.program.internal_members" 
                                                 @focus.stop="activeSuggestion = 'program_internal'"
                                                 @click.stop="activeSuggestion = 'program_internal'"
                                                 @input="activeSuggestion = 'program_internal'"
                                                 rows="5" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="List internal members..."></textarea>
-                                                
+                                            
                                             <div v-if="activeSuggestion === 'program_internal' && getSuggestions(form.committee_details.program.internal_members, 'Internal').length > 0" 
                                                  class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                 <div v-for="(person, idx) in getSuggestions(form.committee_details.program.internal_members, 'Internal')" :key="idx"
@@ -840,14 +819,14 @@ const getLeadOffice = (depts: any[]) => {
                                         </div>
                                         
                                         <div class="relative">
-                                            <label class="mb-1 block text-sm font-bold text-gray-700">External Members / Partners</label>
+                                            <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">External Members / Partners</label>
                                             <textarea 
                                                 v-model="form.committee_details.program.external_members" 
                                                 @focus.stop="activeSuggestion = 'program_external'"
                                                 @click.stop="activeSuggestion = 'program_external'"
                                                 @input="activeSuggestion = 'program_external'"
                                                 rows="5" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="List external partners, NGOs, or representatives..."></textarea>
-                                                
+                                            
                                             <div v-if="activeSuggestion === 'program_external' && getSuggestions(form.committee_details.program.external_members, 'External').length > 0" 
                                                  class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                 <div v-for="(person, idx) in getSuggestions(form.committee_details.program.external_members, 'External')" :key="idx"
@@ -873,16 +852,25 @@ const getLeadOffice = (depts: any[]) => {
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-center py-10"><Clock class="w-10 h-10 text-gray-200 mx-auto mb-2" /><p class="text-sm text-gray-400">No history found.</p></div>
-                            </div>
-
-                            <div v-show="activeModalTab !== 'history'">
-                                <div v-if="activeModalTab === 'details'" class="border-t pt-5"><label class="mb-1 block text-sm font-medium text-gray-700">Document (PDF)</label><input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"/></div>
-                                <div class="flex justify-end gap-3 pt-4 mt-4" :class="activeModalTab === 'details' ? '' : 'border-t'">
-                                    <button type="button" @click="showDialog = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
-                                    <button type="submit" :disabled="form.processing" class="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow hover:bg-blue-700 transition">{{ form.processing ? 'Saving...' : 'Save Record' }}</button>
+                                <div v-else class="text-center py-10">
+                                    <Clock class="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                                    <p class="text-sm text-gray-400">No history found.</p>
                                 </div>
                             </div>
+                            
+                            <div v-show="activeModalTab !== 'history'">
+                                <div v-if="activeModalTab === 'details'" class="border-t pt-5">
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Document (PDF)</label>
+                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"/>
+                                </div>
+                                <div class="flex justify-end gap-3 pt-4 mt-4" :class="activeModalTab === 'details' ? '' : 'border-t'">
+                                    <button type="button" @click="showDialog = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
+                                    <button type="submit" :disabled="form.processing" class="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow hover:bg-blue-700 transition">
+                                        {{ form.processing ? 'Saving...' : 'Save Record' }}
+                                    </button>
+                                </div>
+                            </div>
+
                         </form>
                     </div>
                 </div>

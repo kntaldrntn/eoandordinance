@@ -6,11 +6,16 @@
     <title>Legislative Report</title>
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         @page {
             margin: 0.5cm;
             size: landscape;
-            margin-bottom: 2cm;
+            margin-bottom: 1.5cm;
         }
+        
         body {
             font-family: Arial, sans-serif;
             font-size: 9px;
@@ -19,6 +24,7 @@
             padding: 0;
             color: #000;
         }
+        
         .report-header { text-align: center; margin-bottom: 15px; }
         .organization { font-size: 13px; margin: 0; }
         .office { font-weight: bold; font-size: 15px; margin: 0; }
@@ -28,32 +34,33 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: fixed;
+            table-layout: fixed; /* Forces strict column widths */
         }
+        
         thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
+        
         th, td {
             border: 0.5px solid #000;
-            padding: 4px;
-            vertical-align: top;
+            padding: 6px;
+            vertical-align: middle; 
+            text-align: center; /* Centers all text globally */
             font-size: 9px;
+            word-wrap: break-word; /* Forces wrapping */
+            overflow-wrap: break-word;
         }
+        
         th {
             background-color: #e0e0e0;
             font-weight: bold;
-            text-align: center;
         }
         
-        /* Column Widths */
-        .w-xs { width: 5%; text-align: center; } 
-        .w-sm { width: 10%; text-align: center; } 
-        .w-md { width: 15%; }
-        .w-lg { width: 25%; }
+        /* Widths carefully calculated to equal exactly 100% */
+        .w-xs { width: 6%; } 
+        .w-sm { width: 10%; } 
+        .w-md { width: 18%; }
+        .w-lg { width: 23%; }
+        .w-date { width: 10%; }
         
-        .wrap-text {
-            word-break: break-word;
-            white-space: normal;
-        }
     </style>
 </head>
 <body>
@@ -73,47 +80,45 @@
         <p class="report-date">Generated on: {{ date('F d, Y h:i A') }}</p>
     </div>
 
-    <div class="overflow-x-auto">
-        <table class="min-w-full table-auto">
-            <thead>
-                <tr>
-                    <th class="w-xs">Type</th>
-                    <th class="w-sm">Tracking No.</th>
-                    <th class="w-lg">Subject Title</th>
-                    <th class="w-lg">Subject Matter</th>
-                    <th class="w-md">Committee / Author</th>
-                    <th class="w-sm">Date</th>
-                    <th class="w-sm">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($records as $record)
-                <tr>
-                    <td class="w-xs"><strong>{{ $record['doc_type'] }}</strong></td>
-                    <td class="w-sm font-mono">{{ $record['tracking_number'] }}</td>
-                    <td class="w-lg wrap-text font-bold">{{ $record['title'] }}</td>
-                    <td class="w-lg wrap-text">{{ $record['subject_matter'] }}</td>
-                    <td class="w-md wrap-text">{{ $record['involved_parties'] }}</td>
-                    <td class="w-sm">{{ date('M d, Y', strtotime($record['date'])) }}</td>
-                    <td class="w-sm"><strong>{{ $record['status_name'] }}</strong></td>
-                </tr>
-                @empty
-                <tr>
-                    <td class="text-center" colspan="7" style="padding: 20px;">No records match your filter criteria.</td>
-                </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="w-xs">Type</th>
+                <th class="w-sm">Tracking No.</th>
+                <th class="w-lg">Subject Title</th>
+                <th class="w-lg">Subject Matter</th>
+                <th class="w-md">Committee / Author</th>
+                <th class="w-date">Date</th>
+                <th class="w-sm">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($records as $record)
+            <tr>
+                <td class="w-xs"><strong>{{ $record['doc_type'] }}</strong></td>
+                <td class="w-sm font-mono">{{ $record['tracking_number'] }}</td>
+                <td class="w-lg font-bold">{{ $record['title'] }}</td>
+                <td class="w-lg">{{ $record['subject_matter'] }}</td>
+                <td class="w-md">{{ $record['involved_parties'] }}</td>
+                <td class="w-date">{{ date('M d, Y', strtotime($record['date'])) }}</td>
+                <td class="w-sm"><strong>{{ $record['status_name'] }}</strong></td>
+            </tr>
+            @empty
+            <tr>
+                <td colspan="7" style="padding: 20px;">No records match your filter criteria.</td>
+            </tr>
+            @endforelse
+        </tbody>
+    </table>
 
 <script type="text/php">
     if (isset($pdf)) {
         $font = $fontMetrics->getFont("Arial", "normal");
         $size = 8;
-        $pageText = "SP E-Archives | Page {PAGE_NUM} of {PAGE_COUNT} | Generated by: {{ $name }}";
+        $pageText = "Executive Orders and Ordinances System | Page {PAGE_NUM} of {PAGE_COUNT} | Generated by: {{ $name }}";
         $width = $fontMetrics->getTextWidth($pageText, $font, $size);
-        $x = 20; // left margin
-        $y = $pdf->get_height() - 30; // 30 units from bottom
+        $x = 20; 
+        $y = $pdf->get_height() - 30; 
         $pdf->page_text($x, $y, $pageText, $font, $size);
     }
 </script>

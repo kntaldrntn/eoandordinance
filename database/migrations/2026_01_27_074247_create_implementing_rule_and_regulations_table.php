@@ -20,8 +20,8 @@ return new class extends Migration
             $table->string('item_number')->nullable(); // e.g., "Rule I", "Article 2" (Optional)
             $table->string('file_path'); // The PDF
             
-            // This status tracks the progress of the IMPLEMENTATION, not the EO validity
-            $table->enum('status', ['Active', 'On-hold', 'Dropped'])
+            // IRR STATUS
+            $table->enum('status', ['Active', 'On-hold', 'Dropped']) // CHANGED TO MATCH THE CONTROLLER
                 ->default('Active');
 
             // Who is responsible for this rule?

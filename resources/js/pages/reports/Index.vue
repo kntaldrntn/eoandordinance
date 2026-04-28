@@ -20,6 +20,7 @@ const props = defineProps<{
         date_from: string;
         date_to: string;
         search: string;
+        has_irr: string; 
     };
 }>();
 
@@ -30,6 +31,7 @@ const filterForm = ref({
     date_from: props.filters.date_from || '',
     date_to: props.filters.date_to || '',
     search: props.filters.search || '',
+    has_irr: props.filters.has_irr || '',
 });
 
 const isLoading = ref(false);
@@ -52,7 +54,7 @@ watch(() => filterForm.value.search, () => {
 });
 
 const clearFilters = () => {
-    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '' };
+    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '', has_irr: '' }; 
     applyFilters();
 };
 
@@ -93,7 +95,7 @@ const formatDate = (dateString: string) => {
                     <Filter class="w-4 h-4 text-blue-600" /> Report Parameters
                 </div>
                 
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Document Type</label>
                         <select v-model="filterForm.type" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
@@ -112,6 +114,15 @@ const formatDate = (dateString: string) => {
                     </div>
 
                     <div>
+                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">IRR Attachment</label>
+                        <select v-model="filterForm.has_irr" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Any (Show All)</option>
+                            <option value="yes">With IRR Only</option>
+                            <option value="no">Without IRR Only</option>
+                        </select>
+                    </div>
+
+                    <div>
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Date From</label>
                         <input v-model="filterForm.date_from" @change="applyFilters" type="date" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
@@ -125,7 +136,7 @@ const formatDate = (dateString: string) => {
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Keyword Search</label>
                         <div class="relative">
                             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                            <input v-model="filterForm.search" type="text" placeholder="Title, number..." class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input v-model="filterForm.search" type="text" placeholder="Title, number, author..." class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500" />
                         </div>
                     </div>
                 </div>

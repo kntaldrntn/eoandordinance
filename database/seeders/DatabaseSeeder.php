@@ -68,11 +68,12 @@ class DatabaseSeeder extends Seeder
         // 2. Statuses
 
         $statuses = [
-            ['name' => 'Active'],
-            ['name' => 'Amended'],
+            ['name' => 'New'],
+            ['name' => 'Amendment'],
+            ['name' => 'Repeal'],
             ['name' => 'Superseded'],
-            ['name' => 'Repealed'],
-            ['name' => 'Suspended'],
+            ['name' => 'Suspend'],
+            ['name' => 'Amended'],
         ];
 
         DB::table('statuses')->insert($statuses);   
@@ -84,13 +85,19 @@ class DatabaseSeeder extends Seeder
                 'name' => 'System Admin', 
                 'email' => 'admin@gmail.com', 
                 'role' => 'system_admin',
-                'department_id' => 10 
+                'department_id' => 9 
             ],
             [
-                'name' => 'Supervisor User', 
-                'email' => 'supervisor@gmail.com', 
+                'name' => 'Office of the City Administrator', 
+                'email' => 'adm@gmail.com', 
                 'role' => 'supervisor', 
-                'department_id' => 9
+                'department_id' => 8
+            ],
+            [
+                'name' => 'Office of the Sangguniang Panlungsod', 
+                'email' => 'osp@gmail.com', 
+                'role' => 'supervisor', 
+                'department_id' => 6
             ],
             [
                 'name' => 'Focal Person (Tourism)', 
@@ -114,7 +121,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Kent Aldrin Tan', 
                 'email' => 'kntaldrntn@gmail.com', 
                 'role' => 'system_admin',
-                'department_id' => 10 
+                'department_id' => 9 
             ],
         ];
 
