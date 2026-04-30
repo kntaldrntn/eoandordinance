@@ -239,12 +239,14 @@ function deleteIRR(irrId: number) {
 
 const getAuthorLabel = (ord: any) => (ord.author_details && ord.author_details.primary_author) ? ord.author_details.primary_author : 'City Council';
 const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'implementing' || d.pivot.role === 'lead')?.name || '—';
+
+const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 </script>
 
 <template>
     <Head title="Ordinances" />
 
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-gray-50/50 p-4 md:p-8">
             
             <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm xl:flex-row flex-wrap">
@@ -586,7 +588,7 @@ const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'implem
                                     <p class="text-xs text-gray-500 mt-0.5">For: <span class="font-bold text-blue-600">{{ selectedOrd?.ordinance_number }}</span></p>
                                 </div>
                             </div>
-                            <button @click="showIRRDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1.5 transition">×</button>
+                            <button @click="showIRRDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
                         </div>
 
                         <div class="mb-8">
@@ -613,25 +615,36 @@ const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'implem
 
                         <div class="bg-green-50/50 rounded-2xl border border-green-100 p-5 shadow-inner">
                             <h3 class="text-xs font-bold text-green-800 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus class="w-4 h-4" /> Add New Regulation</h3>
+                            
+                            <div v-if="Object.keys(irrForm.errors).length > 0" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                                <AlertCircle class="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-red-800 uppercase">Validation Error</p>
+                                    <p class="text-xs text-red-600 mt-0.5">Please fill out all required fields marked with an asterisk (*).</p>
+                                </div>
+                            </div>
+
                             <form @submit.prevent="submitIRR" class="space-y-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">IRR Status</label>
-                                        <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">IRR Status <span class="text-red-500">*</span></label>
+                                        <select v-model="irrForm.status" class="w-full rounded-lg border px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-green-500" :class="irrForm.errors.status ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'">
                                             <option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option>
                                         </select>
+                                        <p v-if="irrForm.errors.status" class="text-[10px] text-red-500 mt-1 font-medium">{{ irrForm.errors.status }}</p>
                                     </div>
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Lead Office</label>
-                                        <select v-model="irrForm.lead_office_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Lead Office <span class="text-red-500">*</span></label>
+                                        <select v-model="irrForm.lead_office_id" class="w-full rounded-lg border px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-green-500" :class="irrForm.errors.lead_office_id ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'">
                                             <option value="" disabled>Select Office</option>
                                             <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
                                         </select>
+                                        <p v-if="irrForm.errors.lead_office_id" class="text-[10px] text-red-500 mt-1 font-medium">{{ irrForm.errors.lead_office_id }}</p>
                                     </div>
                                     
                                     <div class="md:col-span-2">
                                         <div class="flex items-center justify-between mb-1">
-                                            <label class="text-sm font-medium text-gray-700">Support Offices</label>
+                                            <label class="text-sm font-medium text-gray-700">Support Offices <span class="text-[10px] text-gray-400 font-normal italic ml-1">(Optional)</span></label>
                                             <span class="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{{ irrForm.support_office_ids.length }} Selected</span>
                                         </div>
                                         <div class="relative mb-2">
@@ -648,12 +661,16 @@ const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'implem
                                     </div>
                                 </div>
                                 
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Upload PDF</label>
-                                    <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-white file:text-green-700 cursor-pointer" required/>
+                                <div class="pt-2">
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Upload PDF <span class="text-red-500">*</span></label>
+                                    <div class="relative">
+                                        <input type="file" @change="handleIRRFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-white file:text-green-700 cursor-pointer" required/>
+                                    </div>
+                                    <p v-if="irrForm.errors.file" class="text-[10px] text-red-500 mt-1 font-medium">{{ irrForm.errors.file }}</p>
                                 </div>
-                                <div class="flex justify-end pt-2">
-                                    <button type="submit" :disabled="irrForm.processing" class="bg-green-600 px-6 py-2 text-white rounded-lg shadow-sm hover:bg-green-700 text-sm font-bold transition-all disabled:opacity-50">
+
+                                <div class="flex justify-end pt-4 border-t border-green-200/50 mt-4">
+                                    <button type="submit" :disabled="irrForm.processing" class="bg-green-600 px-6 py-2 text-white rounded-lg shadow-sm hover:bg-green-700 text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2">
                                         {{ irrForm.processing ? 'Uploading...' : 'Save Rule' }}
                                     </button>
                                 </div>

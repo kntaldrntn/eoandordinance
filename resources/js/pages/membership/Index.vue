@@ -60,12 +60,13 @@ const filteredMemberships = computed(() => {
         m.role.toLowerCase().includes(q)
     );
 });
+const breadcrumbs = [{ title: 'Membership', href: '/membership' }];
 </script>
 
 <template>
     <Head title="My Memberships" />
 
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-8 bg-gray-50/50">
             
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row items-center gap-6">

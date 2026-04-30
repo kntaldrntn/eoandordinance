@@ -313,12 +313,14 @@ const getLeadOffice = (depts: any[]) => {
     const lead = depts.find(d => d.pivot.role === 'lead');
     return lead ? lead.name : '—';
 };
+
+const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
 </script>
 
 <template>
     <Head title="EO Profiling" />
 
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-white p-4 md:p-8">
             
             <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm md:flex-row">

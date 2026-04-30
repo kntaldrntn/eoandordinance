@@ -69,12 +69,13 @@ const formatDate = (dateString: string) => {
     if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
 </script>
 
 <template>
     <Head title="Report Generator" />
 
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-white p-4 md:p-8">
             
             <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-2">
