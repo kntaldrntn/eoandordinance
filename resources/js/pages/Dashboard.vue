@@ -19,7 +19,7 @@ const props = defineProps<{
     top_departments: Array<any>;
     filters: any;
     available_years: number[];
-    available_classifications: string[];
+    available_classifications: Array<{ id: number; name: string }>; // Updated Prop
 }>();
 
 // --- Filter State ---
@@ -50,7 +50,7 @@ watch([selectedYear, selectedActive, selectedClass, trendTime, trendType, deptTy
     updateDashboard();
 });
 
-// --- Dynamic Chart Config (Using your original styles + new dynamic labels) ---
+// --- Dynamic Chart Config ---
 const chartOptions = computed(() => ({
     chart: { type: 'area', height: 350, fontFamily: 'inherit', toolbar: { show: false }, zoom: { enabled: false } },
     colors: ['#16a34a'],
@@ -58,7 +58,7 @@ const chartOptions = computed(() => ({
     dataLabels: { enabled: false },
     stroke: { curve: 'smooth', width: 2 },
     xaxis: { 
-        categories: props.trend_chart.labels, // <--- Now dynamically populated from Controller!
+        categories: props.trend_chart.labels,
         axisBorder: { show: false }, axisTicks: { show: false }, tooltip: { enabled: false } 
     },
     yaxis: { show: true, tickAmount: 3, labels: { formatter: (val: number) => Math.round(val) } },
@@ -68,7 +68,7 @@ const chartOptions = computed(() => ({
 
 const chartSeries = computed(() => [{
     name: 'Total Issuances', 
-    data: props.trend_chart.data // <--- Dynamic Data
+    data: props.trend_chart.data
 }]);
 
 // Helper for Department Visuals
@@ -99,7 +99,8 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     
                     <select v-model="selectedClass" class="border-0 bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pr-8">
                         <option value="all">All Classifications</option>
-                        <option v-for="c in available_classifications" :key="c" :value="c">{{ c }}</option>
+                        <!-- Updated to use c.id and c.name -->
+                        <option v-for="c in available_classifications" :key="c.id" :value="c.id">{{ c.name }}</option>
                     </select>
 
                     <select v-model="selectedYear" class="border-0 border-l bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pl-4 pr-8">
@@ -291,11 +292,9 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 </template>
 
 <style scoped>
-/* Existing fade transitions */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* 🚀 NEW: Clean, modern scrollbar for the departments list */
 .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
 }

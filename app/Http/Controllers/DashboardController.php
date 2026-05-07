@@ -14,10 +14,15 @@ class DashboardController extends Controller
 {
     public function index(Request $request)
     {
+        // --- BOUNCER: Kick out read_only users ---
+        if (auth()->user()->role === 'read_only') {
+            return redirect('/membership');
+        }
+
         // --- 1. GLOBAL FILTERS ---
         $filterYear = $request->input('year', 'all'); 
         $filterActive = $request->input('is_active', 'all'); 
-        $filterClass = $request->input('classification', 'all');
+        $filterClass = $request->input('classification', 'all'); // This will now hold the ID
 
         $applyFilters = function($query, $dateCol) use ($filterYear, $filterActive, $filterClass) {
             if ($filterYear !== 'all') {
@@ -26,9 +31,9 @@ class DashboardController extends Controller
             if ($filterActive !== 'all') {
                 $query->where('is_active', $filterActive === 'active');
             }
-            // Apply classification if the model has it (Ordinances might not, EOs do)
-            if ($filterClass !== 'all' && in_array('classification', $query->getModel()->getFillable())) {
-                $query->where('classification', $filterClass);
+            // Updated to check for classification_id instead of classification
+            if ($filterClass !== 'all' && in_array('classification_id', $query->getModel()->getFillable())) {
+                $query->where('classification_id', $filterClass);
             }
             return $query;
         };
@@ -148,7 +153,9 @@ class DashboardController extends Controller
         // --- 6. AVAILABLE FILTERS ---
         $eo_years = ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct();
         $years = Ordinance::selectRaw('YEAR(date_enacted) as year')->distinct()->union($eo_years)->orderBy('year', 'desc')->pluck('year')->toArray();
-        $classifications = ExecutiveOrder::whereNotNull('classification')->distinct()->pluck('classification')->toArray();
+        
+        // Updated to pull from the classifications table directly
+        $classifications = DB::table('classifications')->orderBy('name')->get();
 
         return Inertia::render('Dashboard', [
             'stats' => [
@@ -173,7 +180,7 @@ class DashboardController extends Controller
                 'dept_type' => $deptType,
             ],
             'available_years' => $years,
-            'available_classifications' => $classifications
+            'available_classifications' => $classifications // Now sends array of {id, name}
         ]);
     }
 }

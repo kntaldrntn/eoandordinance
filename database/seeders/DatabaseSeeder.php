@@ -71,13 +71,21 @@ class DatabaseSeeder extends Seeder
             ['name' => 'New'],
             ['name' => 'Amendment'],
             ['name' => 'Repeal'],
-            ['name' => 'Superseded'],
+            ['name' => 'Supersede'],
             ['name' => 'Suspend'],
             ['name' => 'Amended'],
         ];
 
         DB::table('statuses')->insert($statuses);   
 
+        $classifications = [
+            ['name' => 'Administrative'],
+            ['name' => 'Legislative'],
+            ['name' => 'Judicial'],
+            ['name' => 'Executive'],
+        ];
+        
+        DB::table('classifications')->insert($classifications);
         // 3. Users
 
         $users = [

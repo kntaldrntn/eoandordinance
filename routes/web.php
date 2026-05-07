@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CityEmployeeController;
+use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EOController;
@@ -26,6 +27,7 @@ Route::middleware(['role:system_admin'])->group(function () {
         Route::resource('departments', DepartmentController::class);
         Route::resource('employees', CityEmployeeController::class);
         Route::resource('external-members', ExternalMemberController::class);
+        Route::resource('classifications', ClassificationController::class);
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

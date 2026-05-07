@@ -19,12 +19,12 @@ const props = defineProps<{
     userName: string;
     filters: { type: string; year: string; is_active: string; classification: string };
     available_years: number[];
-    available_classifications: string[];
+    available_classifications: Array<{ id: number; name: string }>; // Updated prop type
 }>();
 
 // Search & Filter State
 const searchQuery = ref('');
-const filterType = ref(props.filters.type); // NEW
+const filterType = ref(props.filters.type); 
 const filterYear = ref(props.filters.year);
 const filterActive = ref(props.filters.is_active);
 const filterClass = ref(props.filters.classification);
@@ -112,7 +112,7 @@ const breadcrumbs = [{ title: 'Membership', href: '/membership' }];
 
                             <select v-model="filterClass" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none" :disabled="filterType === 'Ordinance'" :class="{ 'opacity-50': filterType === 'Ordinance' }">
                                 <option value="all">Classifications</option>
-                                <option v-for="c in available_classifications" :key="c" :value="c">{{ c }}</option>
+                                <option v-for="c in available_classifications" :key="c.id" :value="c.id">{{ c.name }}</option>
                             </select>
 
                             <select v-model="filterYear" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">

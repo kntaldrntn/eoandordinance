@@ -66,10 +66,22 @@ const toggleHistory = (id: number) => {
 
 // --- STYLING HELPERS ---
 
+const hasAuthorDetails = (details: any) => {
+    if (!details) return false;
+    
+    // Check if any of the fields actually have text or items in them
+    return Boolean(
+        details.primary_author || 
+        details.committee_chairmanship || 
+        details.co_authors || 
+        (Array.isArray(details.external_institutions) && details.external_institutions.length > 0)
+    );
+};
+
 const getPastTenseAction = (type: string) => {
     if (type === 'Amends') return 'Amended';
     if (type === 'Repeals') return 'Repealed';
-    if (type === 'Supersedes') return 'Superseded';
+    if (type === 'Supersedes') return 'Supersede';
     if (type === 'Supplements') return 'Supplemented';
     return 'Amended'; 
 };
@@ -89,7 +101,7 @@ const getStatusColor = (statusName: string) => {
         case 'Suspended':
             return 'bg-amber-50 text-amber-700 border-amber-200 ring-amber-600/20'; 
         case 'Repealed': 
-        case 'Superseded': 
+        case 'Supersede': 
             return 'bg-red-50 text-red-700 border-red-200 ring-red-600/20'; 
         default: 
             return 'bg-white text-gray-700 border-gray-200 ring-gray-500/10';
@@ -296,7 +308,7 @@ const getSponsors = (depts: any[]) => {
                                 </button>
                                 
                                 <button 
-                                    v-if="(activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none') || (activeTab === 'ordinance' && item.author_details)" 
+                                    v-if="(activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none') || (activeTab === 'ordinance' && hasAuthorDetails(item.author_details))" 
                                     @click="openCommitteeModal(item)" 
                                     class="text-xs font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors"
                                 >

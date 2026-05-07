@@ -29,6 +29,7 @@ import {
     Users,
     FileSpreadsheet,
     BookUser,
+    FolderPen,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -80,7 +81,7 @@ const platformItems = computed(() => {
             title: 'Membership',
             href: route('membership.index'),
             icon:  BookUser,
-            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee'],
+            roles: ['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only'],
             show: true // Always show to allowed roles
         }
     ];
@@ -102,6 +103,12 @@ const settingsItems = computed(() => {
             title: 'External Directory',
             href: route('external-members.index'),
             icon: Users,
+            roles: ['system_admin']
+        },
+        {
+            title: 'Classifications Management',
+            href: route('classifications.index'),
+            icon: FolderPen,
             roles: ['system_admin']
         },
         {

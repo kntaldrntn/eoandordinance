@@ -8,9 +8,9 @@ import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
 
-// 1. Updated Props to match StatusController
+// 1. Updated Props to match classificationController
 const props = defineProps<{
-    statuses: {
+    classifications: {
         data: Array<{
             id: number;
             name: string; 
@@ -50,9 +50,9 @@ const performSearch = () => {
     searchTimeout = setTimeout(() => {
         isSearching.value = true;
 
-        // 2. Updated Route to 'statuses.index'
+        // 2. Updated Route to 'classifications.index'
         router.get(
-            route('statuses.index'),
+            route('classifications.index'),
             {
                 search: searchTerm.value,
             },
@@ -71,7 +71,7 @@ watch(searchTerm, performSearch);
 
 const clearSearch = () => {
     searchTerm.value = '';
-    router.get(route('statuses.index'));
+    router.get(route('classifications.index'));
 };
 
 const goToPage = (url: string) => {
@@ -97,8 +97,8 @@ watch(
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Status Management',
-        href: route('statuses.index'),
+        title: 'Classification Management',
+        href: route('classifications.index'),
     },
 ];
 
@@ -134,7 +134,7 @@ function openEditDialog(item: any) {
 
 function openDeleteModal(item: { id: number; name: string }) {
     // 4. Updated Delete Route
-    itemToDeleteUrl.value = route('statuses.destroy', item.id);
+    itemToDeleteUrl.value = route('classifications.destroy', item.id);
     itemToDeleteName.value = item.name;
     showDeleteModal.value = true;
 }
@@ -142,7 +142,7 @@ function openDeleteModal(item: { id: number; name: string }) {
 function submitForm() {
     if (isEdit.value && editingId.value !== null) {
         // 5. Updated Update Route
-        form.put(route('statuses.update', editingId.value), {
+        form.put(route('classifications.update', editingId.value), {
             onSuccess: () => {
                 showDialog.value = false;
                 form.reset();
@@ -150,7 +150,7 @@ function submitForm() {
         });
     } else {
         // 6. Updated Store Route
-        form.post(route('statuses.store'), {
+        form.post(route('classifications.store'), {
             onSuccess: () => {
                 showDialog.value = false;
                 form.reset();
@@ -161,7 +161,7 @@ function submitForm() {
 </script>
 
 <template>
-    <Head title="Status Management" />
+    <Head title="Classification Management" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-white p-4 md:p-8">
@@ -171,7 +171,7 @@ function submitForm() {
                     <input
                         v-model="searchTerm"
                         type="text"
-                        placeholder="Search statuses..."
+                        placeholder="Search classifications..."
                         class="block w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-10 text-sm placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                     <button
@@ -188,7 +188,7 @@ function submitForm() {
                     @click="openAddDialog"
                 >
                     <Plus class="h-4 w-4" />
-                    Create Status
+                    Create Classification
                 </button>
             </div>
 
@@ -198,34 +198,34 @@ function submitForm() {
                         <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
                             <tr>
                                 <th class="px-6 py-3 font-medium tracking-wide">ID</th>
-                                <th class="px-6 py-3 font-medium tracking-wide">Status Name</th>
+                                <th class="px-6 py-3 font-medium tracking-wide">Classification Name</th>
                                 <th class="px-6 py-3 text-center font-medium">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr
-                                v-for="status in statuses.data"
-                                :key="status.id"
+                                v-for="classification in classifications.data"
+                                :key="classification.id"
                                 class="transition-colors duration-150 hover:bg-gray-50"
                             >
-                                <td class="px-6 py-3 font-mono text-gray-900">{{ status.id }}</td>
+                                <td class="px-6 py-3 font-mono text-gray-900">{{ classification.id }}</td>
                                 <td class="px-6 py-3 font-medium text-gray-800">
                                     <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
-                                        {{ status.name }}
+                                        {{ classification.name }}
                                     </span>
                                 </td>
                                 <td class="px-6 py-3">
                                     <div class="flex justify-center gap-2">
                                         <button
                                             class="rounded-lg bg-blue-50 p-2 text-blue-600 transition hover:bg-blue-100 focus:ring-2 focus:ring-blue-400"
-                                            @click="openEditDialog(status)"
+                                            @click="openEditDialog(classification)"
                                             title="Edit"
                                         >
                                             <Pencil class="h-4 w-4" />
                                         </button>
                                         <button
                                             class="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 focus:ring-2 focus:ring-red-400"
-                                            @click="openDeleteModal(status)"
+                                            @click="openDeleteModal(classification)"
                                             title="Delete"
                                         >
                                             <Trash2 class="h-4 w-4" />
@@ -236,32 +236,32 @@ function submitForm() {
                         </tbody>
                     </table>
 
-                    <div v-if="statuses.data.length === 0" class="py-12 text-center">
+                    <div v-if="classifications.data.length === 0" class="py-12 text-center">
                         <div class="flex flex-col items-center">
                             <Search class="mb-4 h-12 w-12 text-gray-300" />
-                            <h3 class="text-lg font-semibold text-gray-900">No statuses found</h3>
+                            <h3 class="text-lg font-semibold text-gray-900">No Classifications found</h3>
                             <p class="mt-1 mb-4 text-sm text-gray-500">
-                                {{ searchTerm ? 'Try adjusting your search terms.' : 'Get started by creating your first status.' }}
+                                {{ searchTerm ? 'Try adjusting your search terms.' : 'Get started by creating your first classification.' }}
                             </p>
                             <button
                                 v-if="!searchTerm"
                                 @click="openAddDialog"
                                 class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700"
                             >
-                                Create Status
+                                Create Classification
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <div v-if="statuses.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-4 py-3">
+                <div v-if="classifications.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-4 py-3">
                     <p class="text-sm text-gray-600">
-                        Showing <span class="font-medium">{{ statuses.from }}</span>–<span class="font-medium">{{ statuses.to }}</span> of
-                        <span class="font-medium">{{ statuses.total }}</span>
+                        Showing <span class="font-medium">{{ classifications.from }}</span>–<span class="font-medium">{{ classifications.to }}</span> of
+                        <span class="font-medium">{{ classifications.total }}</span>
                     </p>
                     <div class="flex gap-1">
                         <button
-                            v-for="(link, index) in statuses.links.slice(1, -1)"
+                            v-for="(link, index) in classifications.links.slice(1, -1)"
                             :key="index"
                             @click="goToPage(String(link.url))"
                             :disabled="!link.url"
@@ -280,26 +280,26 @@ function submitForm() {
                 v-model:show="showDeleteModal"
                 :deleteUrl="itemToDeleteUrl"
                 :item-name="itemToDeleteName"
-                title="Delete Status"
-                message="Are you sure you want to delete this status? This action cannot be undone."
+                title="Delete classification"
+                message="Are you sure you want to delete this classification? This action cannot be undone."
             />
 
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
                         <h2 class="mb-6 text-lg font-semibold text-gray-900">
-                            {{ isEdit ? 'Edit Status' : 'Create New Status' }}
+                            {{ isEdit ? 'Edit classification' : 'Create New classification' }}
                         </h2>
                         <form @submit.prevent="submitForm" class="space-y-4">
                             <div>
-                                <label class="mb-1 block text-sm font-medium text-gray-700" for="name">Status Name</label>
+                                <label class="mb-1 block text-sm font-medium text-gray-700" for="name">Classification Name</label>
                                 <input
                                     v-model="form.name"
                                     id="name"
                                     type="text"
                                     class="w-full rounded-lg border border-gray-300 px-3 py-2 font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none"
                                     required
-                                    placeholder="e.g., Active, Repealed, Supersede"
+                                    placeholder="e.g., Administrative, Legislative, Judicial, Executive"
                                 />
                                 <p v-if="form.errors.name" class="mt-1 text-sm text-red-500">{{ form.errors.name }}</p>
                             </div>
@@ -317,7 +317,7 @@ function submitForm() {
                                     class="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50"
                                     :disabled="form.processing"
                                 >
-                                    {{ form.processing ? 'Saving...' : isEdit ? 'Update Status' : 'Create Status' }}
+                                    {{ form.processing ? 'Saving...' : isEdit ? 'Update Classification' : 'Create Classification' }}
                                 </button>
                             </div>
                         </form>

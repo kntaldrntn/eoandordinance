@@ -117,7 +117,7 @@ class OrdinanceController extends Controller
                         $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id') ?? 1;
                         $parent->update(['status_id' => $statusId, 'is_active' => false]);
                     } elseif ($action === 'Supersedes') {
-                        $statusId = DB::table('statuses')->where('name', 'Superseded')->value('id') ?? 1;
+                        $statusId = DB::table('statuses')->where('name', 'Supersede')->value('id') ?? 1;
                         $parent->update(['status_id' => $statusId, 'is_active' => false]);
                     }
                 }
@@ -207,7 +207,7 @@ class OrdinanceController extends Controller
                             $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id') ?? 1;
                             $parent->update(['status_id' => $statusId, 'is_active' => false]);
                         } elseif ($action === 'Supersedes') {
-                            $statusId = DB::table('statuses')->where('name', 'Superseded')->value('id') ?? 1;
+                            $statusId = DB::table('statuses')->where('name', 'Supersede')->value('id') ?? 1;
                             $parent->update(['status_id' => $statusId, 'is_active' => false]);
                         }
                     }

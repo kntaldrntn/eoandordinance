@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ExecutiveOrder;
 use App\Models\Ordinance;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB; // Added DB facade
 use Inertia\Inertia;
 use Carbon\Carbon;
 
@@ -15,10 +16,10 @@ class MembershipController extends Controller
         $userName = auth()->user()->name; 
 
         // 1. Get Filters
-        $filterType = $request->input('type', 'all'); // NEW: Document Type Filter
+        $filterType = $request->input('type', 'all'); 
         $filterYear = $request->input('year', 'all'); 
         $filterActive = $request->input('is_active', 'all'); 
-        $filterClass = $request->input('classification', 'all');
+        $filterClass = $request->input('classification', 'all'); // This is now an ID
 
         $eoMemberships = collect();
         $ordMemberships = collect();
@@ -31,7 +32,7 @@ class MembershipController extends Controller
 
             if ($filterYear !== 'all') $eoQuery->whereYear('date_issued', $filterYear);
             if ($filterActive !== 'all') $eoQuery->where('is_active', $filterActive === 'active');
-            if ($filterClass !== 'all') $eoQuery->where('classification', $filterClass);
+            if ($filterClass !== 'all') $eoQuery->where('classification_id', $filterClass); // Updated column
 
             $eoMemberships = $eoQuery->get()->map(function ($eo) use ($userName) {
                 return [
@@ -57,8 +58,7 @@ class MembershipController extends Controller
 
             if ($filterYear !== 'all') $ordQuery->whereYear('date_enacted', $filterYear);
             if ($filterActive !== 'all') $ordQuery->where('is_active', $filterActive === 'active');
-            // Note: Ordinances don't use classifications, so we skip $filterClass here
-
+            
             $ordMemberships = $ordQuery->get()->map(function ($ord) use ($userName) {
                 return [
                     'id' => 'ord_' . $ord->id,
@@ -81,7 +81,7 @@ class MembershipController extends Controller
         
         $allMemberships = $eoMemberships->concat($ordMemberships);
 
-        // If a classification filter is applied, strict filter out Ordinances just to be safe
+        // If a classification filter is applied, strict filter out Ordinances
         if ($filterClass !== 'all') {
             $allMemberships = $allMemberships->filter(function($item) {
                 return $item['type'] === 'Executive Order';
@@ -97,19 +97,21 @@ class MembershipController extends Controller
         $ordYears = Ordinance::selectRaw('YEAR(date_enacted) as year')->whereNotNull('date_enacted')->pluck('year');
         
         $years = $eoYears->concat($ordYears)->unique()->sortDesc()->values()->toArray();
-        $classifications = ExecutiveOrder::whereNotNull('classification')->distinct()->pluck('classification')->toArray();
+        
+        // Updated to pull from the classifications table directly
+        $classifications = DB::table('classifications')->orderBy('name')->get();
 
         return Inertia::render('membership/Index', [
             'memberships' => $memberships,
             'userName' => $userName,
             'filters' => [
-                'type' => $filterType, // Passed back to the frontend
+                'type' => $filterType, 
                 'year' => $filterYear,
                 'is_active' => $filterActive,
                 'classification' => $filterClass,
             ],
             'available_years' => $years,
-            'available_classifications' => $classifications,
+            'available_classifications' => $classifications, // Sends array of {id, name}
         ]);
     }
 
@@ -173,4 +175,4 @@ class MembershipController extends Controller
 
         return count($rolesFound) > 0 ? implode(', ', array_unique($rolesFound)) : 'Author / Sponsor';
     }
-}
+}   
