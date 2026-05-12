@@ -120,16 +120,10 @@ class DatabaseSeeder extends Seeder
                 'department_id' => 1
             ],
             [
-                'name' => 'Public User', 
+                'name' => 'Kent Aldrin Tan', 
                 'email' => 'guest@gmail.com', 
                 'role' => 'read_only',
                 'department_id' => null
-            ],
-            [
-                'name' => 'Kent Aldrin Tan', 
-                'email' => 'kntaldrntn@gmail.com', 
-                'role' => 'system_admin',
-                'department_id' => 9 
             ],
         ];
 

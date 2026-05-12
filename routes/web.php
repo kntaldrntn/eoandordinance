@@ -34,6 +34,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('eo', EOController::class);
     Route::resource('irr', IRRController::class);
     Route::resource('ordinances', OrdinanceController::class);
+    
+    // --- NEW: Custom IRR Routes for Ordinances ---
+    Route::post('/ordinances/{ordinance}/irr', [OrdinanceController::class, 'storeIrr'])->name('ordinance.irr.store');
+    Route::post('/irrs/{id}/disable', [OrdinanceController::class, 'disableIrr'])->name('ordinance.irr.disable');
+
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/generate', [ReportController::class, 'generate'])->name('reports.generate');
     Route::resource('membership', MembershipController::class);

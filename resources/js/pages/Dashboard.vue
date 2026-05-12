@@ -146,8 +146,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     </div>
                     <div class="mt-4">
                         <h3 class="text-2xl font-bold text-gray-900">{{ stats.active_offices }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Offices Involved in EOs</p>
-                    </div>
+                        <p class="text-xs text-gray-500 mt-1">Offices in Legislation</p> </div>
                 </div>
 
                 <div class="rounded-xl border bg-white p-6 shadow-sm">

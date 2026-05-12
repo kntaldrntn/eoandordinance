@@ -24,4 +24,9 @@ class Department extends Model
                     ->withPivot('role') // Important: Lets us grab the 'lead' vs 'support' info
                     ->withTimestamps();
     }
+    public function ordinances()
+    {
+        // Explicitly using your custom pivot table name!
+        return $this->belongsToMany(Ordinance::class, 'ordinance_department')->withPivot('role');
+    }
 }

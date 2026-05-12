@@ -31,9 +31,16 @@ class DashboardController extends Controller
             if ($filterActive !== 'all') {
                 $query->where('is_active', $filterActive === 'active');
             }
-            // Updated to check for classification_id instead of classification
-            if ($filterClass !== 'all' && in_array('classification_id', $query->getModel()->getFillable())) {
-                $query->where('classification_id', $filterClass);
+            
+            // Smart Classification Filter
+            $hasClassification = in_array('classification_id', $query->getModel()->getFillable());
+            if ($filterClass !== 'all') {
+                if ($hasClassification) {
+                    $query->where('classification_id', $filterClass);
+                } else {
+                    // Ordinances drop out of stats if a classification is selected
+                    $query->whereRaw('1 = 0'); 
+                }
             }
             return $query;
         };
@@ -43,14 +50,25 @@ class DashboardController extends Controller
         $total_ordinances = $applyFilters(Ordinance::query(), 'date_enacted')->count();
         $ords_with_irrs = $applyFilters(Ordinance::has('implementingRules'), 'date_enacted')->count();
 
-        $active_offices = DB::table('eo_department')
+        // Merge Active Offices from both EOs and Ordinances
+        $active_eo_offices = DB::table('eo_department')
             ->join('executive_orders', 'eo_department.executive_order_id', '=', 'executive_orders.id')
             ->where(function($q) use ($filterYear, $filterActive) {
                 if ($filterYear !== 'all') $q->whereYear('executive_orders.date_issued', $filterYear);
                 if ($filterActive !== 'all') $q->where('executive_orders.is_active', $filterActive === 'active');
             })
-            ->distinct('department_id')
-            ->count('department_id');
+            ->pluck('department_id');
+
+        // 🚀 FIXED: Using ordinance_department table!
+        $active_ord_offices = DB::table('ordinance_department') 
+            ->join('ordinances', 'ordinance_department.ordinance_id', '=', 'ordinances.id')
+            ->where(function($q) use ($filterYear, $filterActive) {
+                if ($filterYear !== 'all') $q->whereYear('ordinances.date_enacted', $filterYear);
+                if ($filterActive !== 'all') $q->where('ordinances.is_active', $filterActive === 'active');
+            })
+            ->pluck('department_id');
+
+        $active_offices = $active_eo_offices->concat($active_ord_offices)->unique()->count();
 
         // --- 3. TREND CHART DATA (Dynamic Ranges) ---
         $trendTime = $request->input('trend_time', 'monthly'); 
@@ -134,12 +152,20 @@ class DashboardController extends Controller
         $departments = Department::withCount([
             'executiveOrders as eo_lead' => fn($q) => $q->where('eo_department.role', 'lead'),
             'executiveOrders as eo_support' => fn($q) => $q->where('eo_department.role', 'support'),
+            
+            // 🚀 FIXED: Using ordinance_department table!
+            'ordinances as ord_lead' => fn($q) => $q->where('ordinance_department.role', 'lead'),
+            'ordinances as ord_support' => fn($q) => $q->where('ordinance_department.role', 'support'),
         ])->get()->map(function($dept) use ($deptType) {
             $lead = 0; $support = 0;
             
             if ($deptType === 'all' || $deptType === 'eo') {
                 $lead += $dept->eo_lead;
                 $support += $dept->eo_support;
+            }
+            if ($deptType === 'all' || $deptType === 'ord') {
+                $lead += $dept->ord_lead ?? 0;
+                $support += $dept->ord_support ?? 0;
             }
 
             $dept->total_involved = $lead + $support;
@@ -154,7 +180,6 @@ class DashboardController extends Controller
         $eo_years = ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct();
         $years = Ordinance::selectRaw('YEAR(date_enacted) as year')->distinct()->union($eo_years)->orderBy('year', 'desc')->pluck('year')->toArray();
         
-        // Updated to pull from the classifications table directly
         $classifications = DB::table('classifications')->orderBy('name')->get();
 
         return Inertia::render('Dashboard', [
@@ -180,7 +205,7 @@ class DashboardController extends Controller
                 'dept_type' => $deptType,
             ],
             'available_years' => $years,
-            'available_classifications' => $classifications // Now sends array of {id, name}
+            'available_classifications' => $classifications 
         ]);
     }
 }

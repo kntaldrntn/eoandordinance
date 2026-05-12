@@ -15,6 +15,14 @@ class OrdinanceController extends Controller
 {
     public function index(Request $request)
     {
+        // Ensure standard statuses exist
+        $requiredStatuses = ['New', 'Amendment', 'Suspended'];
+        foreach ($requiredStatuses as $statusName) {
+            if (!DB::table('statuses')->where('name', $statusName)->exists()) {
+                DB::table('statuses')->insert(['name' => $statusName]);
+            }
+        }
+
         $query = Ordinance::with([
             'status', 
             'departments', 
@@ -91,12 +99,13 @@ class OrdinanceController extends Controller
             'file' => 'nullable|file|mimes:pdf|max:20480', 
             
             'amends_ordinance_id' => 'nullable|exists:ordinances,id',
-            'relationship_type' => 'nullable|string|in:Partial Amendment,Full Amendment,Repeals,Supersedes',
+            'relationship_type' => 'nullable|string',
             'remarks' => 'nullable|string',
             
             'author_details' => 'nullable|array', 
             'external_institutions' => 'nullable|array', 
-            'implementing_department_ids' => 'nullable|array',
+            'lead_office_id' => 'nullable|exists:departments,id',
+            'support_office_ids' => 'nullable|array',
             'is_active' => 'boolean', 
         ]);
 
@@ -147,13 +156,17 @@ class OrdinanceController extends Controller
                 'remarks' => $validated['remarks'] ?? null,
             ]);
 
-            if (!empty($validated['implementing_department_ids'])) {
-                $syncData = [];
-                foreach ($validated['implementing_department_ids'] as $id) {
-                    $syncData[$id] = ['role' => 'implementing'];
-                }
-                $ordinance->departments()->sync($syncData);
+            // Unified Lead and Support Office Sync
+            $syncData = [];
+            if (!empty($validated['lead_office_id'])) {
+                $syncData[$validated['lead_office_id']] = ['role' => 'lead'];
             }
+            if (!empty($validated['support_office_ids'])) {
+                foreach ($validated['support_office_ids'] as $id) {
+                    if ($id) $syncData[$id] = ['role' => 'support'];
+                }
+            }
+            $ordinance->departments()->sync($syncData);
         });
 
         return redirect()->back()->with('success', 'Ordinance encoded successfully.');
@@ -178,12 +191,13 @@ class OrdinanceController extends Controller
             'file' => 'nullable|file|mimes:pdf|max:20480', 
             
             'amends_ordinance_id' => 'nullable|exists:ordinances,id',
-            'relationship_type' => 'nullable|string|in:Partial Amendment,Full Amendment,Repeals,Supersedes',
+            'relationship_type' => 'nullable|string',
             'remarks' => 'nullable|string',
             
             'author_details' => 'nullable|array', 
             'external_institutions' => 'nullable|array', 
-            'implementing_department_ids' => 'nullable|array',
+            'lead_office_id' => 'nullable|exists:departments,id',
+            'support_office_ids' => 'nullable|array',
             'is_active' => 'boolean', 
         ]);
 
@@ -242,15 +256,61 @@ class OrdinanceController extends Controller
                 'remarks' => $validated['remarks'] ?? null,
             ]);
 
+            // Unified Lead and Support Office Sync
             $syncData = [];
-            if (!empty($validated['implementing_department_ids'])) {
-                foreach ($validated['implementing_department_ids'] as $id) {
-                    $syncData[$id] = ['role' => 'implementing'];
+            if (!empty($validated['lead_office_id'])) {
+                $syncData[$validated['lead_office_id']] = ['role' => 'lead'];
+            }
+            if (!empty($validated['support_office_ids'])) {
+                foreach ($validated['support_office_ids'] as $id) {
+                    if ($id) $syncData[$id] = ['role' => 'support'];
                 }
             }
             $ordinance->departments()->sync($syncData);
         });
 
         return redirect()->back()->with('success', 'Ordinance updated successfully.');
+    }
+
+    // --- IRR MANAGEMENT LOGIC ---
+
+    public function storeIrr(Request $request, Ordinance $ordinance)
+    {
+        $request->validate([
+            'status' => 'required|string',
+            'lead_office_id' => 'required|exists:departments,id',
+            'support_offices' => 'nullable|array', 
+            'file' => 'required|file|mimes:pdf|max:20480',
+        ]);
+
+        $path = $request->file('file')->store('irrs', 'public');
+
+        DB::table('implementing_rules_and_regulations')->insert([
+            'ordinance_id' => $ordinance->id,
+            'lead_office_id' => $request->lead_office_id,
+            'support_offices' => json_encode($request->support_offices ?? []), 
+            'status' => $request->status,
+            'is_active' => true,
+            'file_path' => $path,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return redirect()->back()->with('success', 'Implementing Rules (IRR) uploaded and linked successfully.');
+    }
+
+    public function disableIrr(Request $request, $id)
+    {
+        $request->validate([
+            'reason' => 'required|string|max:1000'
+        ]);
+
+        DB::table('implementing_rules_and_regulations')->where('id', $id)->update([
+            'is_active' => false,
+            'disable_reason' => $request->reason,
+            'updated_at' => now()
+        ]);
+
+        return redirect()->back()->with('success', 'IRR disabled successfully.');
     }
 }

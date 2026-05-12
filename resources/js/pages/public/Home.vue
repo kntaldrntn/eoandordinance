@@ -226,6 +226,13 @@ const getSponsors = (depts: any[]) => {
                                 {{ item.title }}
                             </h3>
 
+                            <div v-if="activeTab === 'eo' && item.declaration" class="mb-4 pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 rounded-r-lg pr-4">
+                                <p class="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Declaration / Directive:</p>
+                                <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                    {{ item.declaration }}
+                                </p>
+                            </div>
+
                             <div v-if="item.remarks" class="mb-4 pl-3 border-l-2 border-gray-300 bg-gray-50/50 py-1">
                                 <p class="text-sm text-gray-600 italic">
                                     "{{ item.remarks }}"
@@ -411,9 +418,19 @@ const getSponsors = (depts: any[]) => {
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
                                             <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.external_members }}</p>
                                         </div>
-                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.secretariat">
+                                        
+                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.lead_secretariat || selectedCommittee.committee_details.council.secretariat_members">
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Secretariat</h4>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat }}</p>
+                                            
+                                            <div v-if="selectedCommittee.committee_details.council.lead_secretariat" class="mb-3">
+                                                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Lead Secretariat</p>
+                                                <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.lead_secretariat }}</p>
+                                            </div>
+                                            
+                                            <div v-if="selectedCommittee.committee_details.council.secretariat_members">
+                                                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Members</p>
+                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat_members }}</p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
