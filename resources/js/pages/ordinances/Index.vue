@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
-    Gavel, Plus, Search, Building2, BookOpen, Download, AlertCircle, 
+    Gavel, Plus, Search, Building2, BookOpen, AlertCircle, 
     UserCheck, Clock, Trash2, XCircle, Info, Pencil, Eye, Filter, CheckCircle2, Paperclip, AlertTriangle
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
@@ -61,7 +61,6 @@ const activeModalTab = ref('details');
 const selectedRecord = ref<any>(null); 
 const selectedIrrId = ref<number | null>(null);
 
-const implementingSearchQuery = ref('');
 const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
 
@@ -75,7 +74,6 @@ const filteredParents = computed(() => {
     return list.slice(0, 15);
 });
 
-// LOGIC: Hide "Amended" from manual selection
 const selectableStatuses = computed(() => props.statuses.filter(s => s.name !== 'Amended'));
 
 const isAmendmentMode = computed(() => {
@@ -103,7 +101,6 @@ const parseArray = (val: any) => {
     return parsed.length ? parsed : [''];
 };
 
-// Form Structures
 const defaultAuthorDetails = () => ({
     introduced_by: '',
     is_primary_author: true,
@@ -128,7 +125,7 @@ const form = useForm({
     remarks: '',
     author_details: defaultAuthorDetails(),
     lead_office_id: '' as string | number,
-    support_offices: [{ id: '' as string | number, name: '' }], 
+    support_office_ids: [] as number[], // 🚀 FIXED: Back to a simple array of IDs
     external_institutions: [''], 
     file: null as File | null,
 });
@@ -136,16 +133,15 @@ const form = useForm({
 const irrForm = useForm({
     status: 'Active',
     lead_office_id: '' as string | number,
-    support_offices: [{ id: '' as string | number, name: '' }],
+    support_offices: [] as number[], // 🚀 FIXED: Back to a simple array of IDs
     file: null as File | null,
 });
 
 const disableIrrForm = useForm({ reason: '' });
 
-// --- SUGGESTIVE SEARCH LOGIC ---
+// --- SEARCH LOGIC (People & Lead Office) ---
 const activeSuggestion = ref<string | null>(null);
 
-// People Search
 const getSuggestions = (query: string) => {
     if (!query) return props.peopleRegistry.slice(0, 10);
     const q = query.toLowerCase();
@@ -159,7 +155,8 @@ const selectPerson = (field: string, name: string, index?: number) => {
     activeSuggestion.value = null;
 };
 
-// Department Search
+// Lead Office Search
+const implementingSearchQuery = ref('');
 const deptSearchQuery = ref('');
 const getDeptSuggestions = (query: string) => {
     if (!query) return props.departments.slice(0, 10);
@@ -174,24 +171,30 @@ const selectLeadOffice = (dept: any, targetForm: any = form) => {
     activeSuggestion.value = null;
 };
 
-const selectSupportOffice = (dept: any, index: number, targetForm: any = form) => {
-    targetForm.support_offices[index] = { id: dept.id, name: dept.name };
-    activeSuggestion.value = null;
-};
+// 🚀 RESTORED: Support Office Checkbox Filters
+const supportSearchQuery = ref('');
+const filteredSupportOffices = computed(() => {
+    if (!supportSearchQuery.value) return props.departments;
+    return props.departments.filter(dept => dept.name.toLowerCase().includes(supportSearchQuery.value.toLowerCase()));
+});
 
-const addSupportOffice = (targetForm: any = form) => { targetForm.support_offices.push({ id: '', name: '' }); };
-const removeSupportOffice = (index: number, targetForm: any = form) => { targetForm.support_offices.splice(index, 1); };
+const irrSupportSearchQuery = ref('');
+const filteredIrrSupportOffices = computed(() => {
+    if (!irrSupportSearchQuery.value) return props.departments;
+    return props.departments.filter(dept => dept.name.toLowerCase().includes(irrSupportSearchQuery.value.toLowerCase()));
+});
+
 
 // --- FUNCTIONS ---
 function openAddDialog() {
     isEdit.value = false; editingId.value = null; selectedRecord.value = null; activeModalTab.value = 'details';
-    implementingSearchQuery.value = ''; parentSearchQuery.value = ''; 
+    implementingSearchQuery.value = ''; parentSearchQuery.value = ''; supportSearchQuery.value = '';
     
     form.reset(); form.clearErrors(); 
     form.relationship_type = 'Partial Amendment'; 
     form.is_active = true; 
     form.author_details = defaultAuthorDetails();
-    form.support_offices = [{ id: '', name: '' }];
+    form.support_office_ids = [];
     form.external_institutions = [''];
 
     const newStatus = selectableStatuses.value.find(s => s.name === 'New');
@@ -202,6 +205,7 @@ function openAddDialog() {
 
 function openEditDialog(ord: any) {
     isEdit.value = true; editingId.value = ord.id; selectedRecord.value = ord; activeModalTab.value = 'details'; 
+    supportSearchQuery.value = '';
     form.clearErrors();
     
     form.ordinance_number = ord.ordinance_number;
@@ -224,23 +228,19 @@ function openEditDialog(ord: any) {
         parentSearchQuery.value = parent ? `${parent.ordinance_number} - ${parent.title}` : '';
     } else { parentSearchQuery.value = ''; }
 
-    // Rehydrate Author Details
     const a = ord.author_details || defaultAuthorDetails();
     a.co_authors = parseArray(a.co_authors);
     a.is_primary_author = a.is_primary_author !== false; 
     form.author_details = a;
     form.external_institutions = parseArray(ord.author_details?.external_institutions);
 
-    // Rehydrate Lead Office
     const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
     implementingSearchQuery.value = lead ? lead.name : '';
 
-    // Rehydrate Support Offices
+    // 🚀 RESTORED: Map pivot table directly to array of IDs
     const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
-    form.support_offices = supports.length > 0 
-        ? supports.map((s:any) => ({ id: s.id, name: s.name })) 
-        : [{ id: '', name: '' }];
+    form.support_office_ids = supports.map((s:any) => s.id);
         
     form.file = null; showDialog.value = true;
 }
@@ -251,15 +251,12 @@ function submitForm() {
     form.transform((data) => {
         const transformed = JSON.parse(JSON.stringify(data));
         
-        // 🚀 THE FIX: Put the physical file back into the payload!
-        transformed.file = data.file; 
+        transformed.file = data.file; // Crucial for PDF upload
 
-        // Primary author tick logic
         transformed.author_details.primary_author = transformed.author_details.is_primary_author ? transformed.author_details.introduced_by : null;
         transformed.author_details.co_authors = joinMembers(transformed.author_details.co_authors);
         transformed.external_institutions = joinMembers(transformed.external_institutions).split(',\n'); 
         
-        transformed.support_office_ids = data.support_offices.map(o => o.id).filter(id => id !== '');
         if(isEdit.value) transformed._method = 'PUT';
         return transformed;
     }).post(isEdit.value && editingId.value ? route('ordinances.update', editingId.value) : route('ordinances.store'), {
@@ -275,29 +272,22 @@ function openIrrDialog(ord: any) {
     selectedRecord.value = ord;
     irrForm.reset();
     irrForm.clearErrors();
+    irrSupportSearchQuery.value = '';
     
-    // Auto-inherit Lead Office
     const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
     irrForm.lead_office_id = lead ? lead.id : '';
     deptSearchQuery.value = lead ? lead.name : '';
 
-    // Auto-inherit Support Offices
+    // 🚀 RESTORED: Inherit straight to IDs
     const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
-    irrForm.support_offices = supports.length > 0 
-        ? supports.map((s:any) => ({ id: s.id, name: s.name })) 
-        : [{ id: '', name: '' }];
+    irrForm.support_offices = supports.map((s:any) => s.id);
 
     showIrrDialog.value = true;
 }
 
 function submitIrrForm() {
-    irrForm.transform((data) => {
-        return {
-            ...data,
-            support_offices: data.support_offices.map(o => o.id).filter(id => id !== '') 
-        };
-    }).post(route('ordinance.irr.store', selectedRecord.value.id), {
-        forceFormData: true, // 🚀 Forces proper file encoding
+    irrForm.post(route('ordinance.irr.store', selectedRecord.value.id), {
+        forceFormData: true, 
         onSuccess: () => { showIrrDialog.value = false; irrForm.reset(); notyf.success('IRR Added Successfully'); },
     });
 }
@@ -440,11 +430,8 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                     <Pencil class="w-4 h-4" />
                                                 </button>
                                             </div>
-                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openIrrDialog(ord)" 
-                                                class="group relative flex items-center justify-center rounded-lg p-2 transition-colors border shadow-sm w-full"
-                                                :class="ord.implementing_rules?.length > 0 ? 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'"
-                                                title="Manage Implementing Rules">
-                                                <BookOpen class="w-4 h-4" />
+                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openIrrDialog(ord)" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-2 py-1 rounded transition w-full flex items-center justify-center gap-1">
+                                                <BookOpen class="w-3 h-3" /> Manage IRR
                                             </button>
                                         </div>
                                     </td>
@@ -695,49 +682,39 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                             <div class="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 space-y-6 relative">
                                 <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest border border-indigo-100 rounded-full">3. Implementing Offices</div>
                                 
-                                <div class="pt-3 border-b border-indigo-100 pb-5">
-                                    <label class="mb-1 block text-xs font-bold text-indigo-800 uppercase">Lead Implementing Office</label>
-                                    <div class="relative w-full">
-                                        <input 
-                                            type="text" v-model="implementingSearchQuery"
-                                            @focus.stop="activeSuggestion = 'lead_office'" @click.stop="activeSuggestion = 'lead_office'"
-                                            @input="activeSuggestion = 'lead_office'; form.lead_office_id = ''"
-                                            class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
-                                        <div v-if="activeSuggestion === 'lead_office' && getDeptSuggestions(implementingSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                            <div v-for="dept in getDeptSuggestions(implementingSearchQuery)" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
-                                                {{ dept.name }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label class="mb-3 block text-xs font-bold text-indigo-800 uppercase">Supporting / Partner Offices</label>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-                                        <div v-for="(office, index) in form.support_offices" :key="'so_'+index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
-                                            <div class="relative flex-1">
-                                                <input 
-                                                    v-model="form.support_offices[index].name" 
-                                                    @focus.stop="activeSuggestion = 'support_office_' + index"
-                                                    @click.stop="activeSuggestion = 'support_office_' + index"
-                                                    @input="activeSuggestion = 'support_office_' + index; form.support_offices[index].id = ''"
-                                                    type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
-                                                
-                                                <div v-if="activeSuggestion === 'support_office_' + index && getDeptSuggestions(form.support_offices[index].name).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="dept in getDeptSuggestions(form.support_offices[index].name)" :key="dept.id" @mousedown.prevent="selectSupportOffice(dept, index, form)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
-                                                        {{ dept.name }}
-                                                    </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-bold text-indigo-800 uppercase">Lead Implementing Office</label>
+                                        <div class="relative w-full">
+                                            <input 
+                                                type="text" v-model="implementingSearchQuery"
+                                                @focus.stop="activeSuggestion = 'lead_office'" @click.stop="activeSuggestion = 'lead_office'"
+                                                @input="activeSuggestion = 'lead_office'; form.lead_office_id = ''"
+                                                class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
+                                            <div v-if="activeSuggestion === 'lead_office' && getDeptSuggestions(implementingSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="dept in getDeptSuggestions(implementingSearchQuery)" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
+                                                    {{ dept.name }}
                                                 </div>
                                             </div>
-                                            <button @click="removeSupportOffice(index, form)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.support_offices.length > 1">
-                                                <XCircle class="w-4 h-4" />
-                                            </button>
                                         </div>
                                     </div>
-                                    <button type="button" @click="addSupportOffice(form)" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition ml-5">
-                                        <Plus class="w-3.5 h-3.5" /> Add Row
-                                    </button>
+
+                                    <div>
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-xs font-bold text-indigo-800 uppercase">Supporting Offices</label>
+                                            <span class="text-[10px] font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full shadow-sm">{{ form.support_office_ids.length }} Selected</span>
+                                        </div>
+                                        <div class="relative mb-2">
+                                            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                            <input v-model="supportSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                                        </div>
+                                        <div class="flex flex-col gap-1 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-indigo-100 custom-scrollbar">
+                                            <label v-for="dept in filteredSupportOffices" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 p-1.5 rounded transition">
+                                                <input type="checkbox" :value="dept.id" v-model="form.support_office_ids" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 border-gray-300" />
+                                                <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -794,32 +771,21 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </div>
 
                                 <div class="border-t border-indigo-100 pt-4">
-                                    <label class="mb-3 block text-xs font-bold text-indigo-800 uppercase">Supporting Offices</label>
-                                    <div class="space-y-2">
-                                        <div v-for="(office, index) in irrForm.support_offices" :key="'irr_so_'+index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
-                                            <div class="relative flex-1">
-                                                <input 
-                                                    v-model="irrForm.support_offices[index].name" 
-                                                    @focus.stop="activeSuggestion = 'irr_support_office_' + index"
-                                                    @click.stop="activeSuggestion = 'irr_support_office_' + index"
-                                                    @input="activeSuggestion = 'irr_support_office_' + index; irrForm.support_offices[index].id = ''"
-                                                    type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
-                                                
-                                                <div v-if="activeSuggestion === 'irr_support_office_' + index && getDeptSuggestions(irrForm.support_offices[index].name).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="dept in getDeptSuggestions(irrForm.support_offices[index].name)" :key="dept.id" @mousedown.prevent="selectSupportOffice(dept, index, irrForm)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
-                                                        {{ dept.name }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <button @click="removeSupportOffice(index, irrForm)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="irrForm.support_offices.length > 1">
-                                                <XCircle class="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <label class="text-xs font-bold text-indigo-800 uppercase">Supporting Offices <span class="text-[10px] text-gray-400 font-normal italic ml-1">(Optional)</span></label>
+                                        <span class="text-[10px] font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full shadow-sm">{{ irrForm.support_offices.length }} Selected</span>
                                     </div>
-                                    <button type="button" @click="addSupportOffice(irrForm)" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition ml-5">
-                                        <Plus class="w-3.5 h-3.5" /> Add Support Office
-                                    </button>
+                                    <div class="relative mb-2">
+                                        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                        <input v-model="irrSupportSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto p-3 bg-white rounded-lg border border-gray-200 custom-scrollbar">
+                                        <label v-for="dept in filteredIrrSupportOffices" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 p-1.5 rounded transition">
+                                            <input type="checkbox" :value="dept.id" v-model="irrForm.support_offices" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 border-gray-300" />
+                                            <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
+                                        </label>
+                                        <div v-if="filteredIrrSupportOffices.length === 0" class="text-[10px] text-gray-400 text-center py-2 col-span-full">No offices match your search.</div>
+                                    </div>
                                 </div>
                             </div>
 
