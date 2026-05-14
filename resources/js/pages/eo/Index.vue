@@ -73,14 +73,23 @@ const activeModalTab = ref('details');
 const activeCouncilTab = ref('committee'); 
 const selectedRecord = ref<any>(null); 
 
+// 🚀 FIXED: Status filtering now matches the Ordinance logic
 const selectableStatuses = computed(() => {
-    const allowed = ['New', 'Amendment', 'Suspended'];
-    return props.statuses.filter(s => allowed.includes(s.name));
+    const manualStatuses = ['New', 'Amendment', 'Suspended'];
+    const autoStatuses = ['Amended', 'Repealed', 'Superseded'];
+    
+    return props.statuses.filter(s => {
+        if (autoStatuses.includes(s.name)) {
+            // Only allow these statuses if the record was already marked as such by the backend
+            return isEdit.value && selectedRecord.value?.status_id === s.id;
+        }
+        return manualStatuses.includes(s.name); 
+    });
 });
 
 const isAmendmentMode = computed(() => {
-    const status = selectableStatuses.value.find(s => s.id === form.status_id);
-    return status?.name === 'Amendment';
+    const status = props.statuses.find(s => s.id == form.status_id);
+    return status?.name?.toLowerCase().includes('amend') && status?.name !== 'Amended';
 });
 
 // --- PARENT EO SUGGESTIVE SEARCH ---
@@ -120,12 +129,10 @@ const parseMembers = (val: any) => {
         parsed = val.split(/[\n,]+/).map(s => s.trim()).filter(s => s !== '');
     }
     
-    // 🚀 FIXED: Pad the array to a MINIMUM of 5 inputs, but don't slice it!
     while (parsed.length < 5) parsed.push('');
     return parsed;
 };
 
-// 🚀 RESTORED: Add and Remove member functions
 const addMember = (field: string) => {
     if (field === 'council_internal') form.committee_details.council.internal_members.push('');
     else if (field === 'council_external') form.committee_details.council.external_members.push('');
@@ -603,18 +610,31 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                     </div>
                                 </div>
 
+                                <div class="flex items-center justify-end gap-3 mt-4">
+                                    <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Active Status</span>
+                                    <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
+                                        <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'" />
+                                    </button>
+                                </div>
+
+                                <Transition name="fade">
+                                    <div v-if="isEdit && selectedRecord?.amendments?.length > 0" class="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2 mt-4">
+                                        <div class="flex items-center gap-2 text-xs font-bold text-blue-800 uppercase tracking-widest">
+                                            <Info class="w-4 h-4" /> Executive Order Superseded / Amended
+                                        </div>
+                                        <p class="text-sm text-blue-900">
+                                            This EO has been affected by: 
+                                            <span class="font-bold bg-white px-2 py-0.5 rounded border border-blue-200 ml-1">
+                                                {{ selectedRecord.amendments[0].eo_number }}
+                                            </span>
+                                        </p>
+                                    </div>
+                                </Transition>
+
                                 <Transition name="fade">
                                     <div v-if="isAmendmentMode" class="p-4 bg-amber-50/50 rounded-xl border border-amber-100 space-y-4 mt-2">
-                                        <div class="flex items-center justify-between">
-                                            <div class="flex items-center gap-2 text-[10px] font-bold text-amber-800 uppercase tracking-widest">
-                                                <Info class="w-3.5 h-3.5" /> Historical Tracker: Amendment Linking
-                                            </div>
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-[10px] text-gray-600 font-bold uppercase tracking-wider">Active State</span>
-                                                <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
-                                                    <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-5' : 'translate-x-1'" />
-                                                </button>
-                                            </div>
+                                        <div class="flex items-center gap-2 text-xs font-bold text-amber-800 uppercase tracking-widest mb-1">
+                                            <Info class="w-4 h-4" /> Historical Tracker: Amendment Linking
                                         </div>
                                         <div class="relative">
                                             <p class="text-[10px] text-amber-700 italic mb-2">Search for a Parent EO. If selected, the parent will automatically be marked as "Amended".</p>
