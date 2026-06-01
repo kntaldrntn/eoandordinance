@@ -6,8 +6,6 @@ import {
 } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 
-// --- Props ---
-// We expect a unified array of records from the backend for the preview
 const props = defineProps<{
     records: {
         data: Array<any>;
@@ -21,17 +19,19 @@ const props = defineProps<{
         date_to: string;
         search: string;
         has_irr: string; 
+        structure_type?: string; // 🚀 Added
     };
 }>();
 
 // --- Filter State ---
 const filterForm = ref({
-    type: props.filters.type || 'all', // 'all', 'eo', 'ordinance'
+    type: props.filters.type || 'all', 
     status_id: props.filters.status_id || '',
     date_from: props.filters.date_from || '',
     date_to: props.filters.date_to || '',
     search: props.filters.search || '',
     has_irr: props.filters.has_irr || '',
+    structure_type: props.filters.structure_type || '', // 🚀 Added
 });
 
 const isLoading = ref(false);
@@ -54,13 +54,12 @@ watch(() => filterForm.value.search, () => {
 });
 
 const clearFilters = () => {
-    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '', has_irr: '' }; 
+    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '', has_irr: '', structure_type: '' }; 
     applyFilters();
 };
 
 // --- PDF Generation ---
 const generatePDF = () => {
-    // We open the PDF route in a new tab, passing all the current filters in the URL!
     const queryParams = new URLSearchParams(filterForm.value as any).toString();
     window.open(route('reports.generate') + '?' + queryParams, '_blank');
 };
@@ -96,13 +95,23 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                     <Filter class="w-4 h-4 text-blue-600" /> Report Parameters
                 </div>
                 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Document Type</label>
                         <select v-model="filterForm.type" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="all">Combined (EOs & Ordinances)</option>
                             <option value="eo">Executive Orders Only</option>
                             <option value="ordinance">Ordinances Only</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="mb-1 block text-xs font-bold uppercase transition-opacity" :class="filterForm.type === 'ordinance' ? 'text-gray-400 opacity-60' : 'text-gray-500'">EO Structure Type</label>
+                        <select v-model="filterForm.structure_type" @change="applyFilters" :disabled="filterForm.type === 'ordinance'" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors">
+                            <option value="">All Structures</option>
+                            <option value="none">Standard EO</option>
+                            <option value="council">Council / Committee / TWG</option>
+                            <option value="program">Program-Based Initiative</option>
                         </select>
                     </div>
 
@@ -133,7 +142,7 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                         <input v-model="filterForm.date_to" @change="applyFilters" type="date" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
 
-                    <div>
+                    <div class="lg:col-span-2">
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Keyword Search</label>
                         <div class="relative">
                             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />

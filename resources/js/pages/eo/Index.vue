@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
-    Download, AlertCircle, Clock, Trash2, CheckCircle2, XCircle, Info, Users,
+    Download, AlertCircle, Clock, CheckCircle2, XCircle, Info, Users,
     Pencil, Eye
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
@@ -19,7 +19,7 @@ const props = defineProps<{
         from: number; to: number; total: number;
         current_page: number; last_page: number;
     };
-    departments: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; code?: string; name: string }>;
     statuses: Array<{ id: number; name: string }>;
     classifications: Array<{ id: number; name: string }>;
     existing_eos: Array<{ id: number; eo_number: string; title: string }>;
@@ -73,14 +73,12 @@ const activeModalTab = ref('details');
 const activeCouncilTab = ref('committee'); 
 const selectedRecord = ref<any>(null); 
 
-// 🚀 FIXED: Status filtering now matches the Ordinance logic
 const selectableStatuses = computed(() => {
     const manualStatuses = ['New', 'Amendment', 'Suspended'];
     const autoStatuses = ['Amended', 'Repealed', 'Superseded'];
     
     return props.statuses.filter(s => {
         if (autoStatuses.includes(s.name)) {
-            // Only allow these statuses if the record was already marked as such by the backend
             return isEdit.value && selectedRecord.value?.status_id === s.id;
         }
         return manualStatuses.includes(s.name); 
@@ -97,13 +95,34 @@ const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
 
 const filteredParents = computed(() => {
-    let list = props.existing_eos || [];
-    if (isEdit.value && editingId.value) list = list.filter(e => e.id !== editingId.value);
+    // Note: Use props.existing_ordinances for the Ordinance file
+    let list = props.existing_eos || []; 
     
+    // 1. Don't let a document amend itself
+    if (isEdit.value && editingId.value) {
+        list = list.filter(item => item.id !== editingId.value);
+    }
+    
+    // 2. STRICT DATE FILTER: Parent effectivity date must be <= New document's effectivity date
+    if (form.effectivity_date) {
+        const newDocDate = new Date(form.effectivity_date).getTime();
+        list = list.filter(item => {
+            if (!item.effectivity_date) return true; // Keep if parent has no date
+            return new Date(item.effectivity_date).getTime() <= newDocDate;
+        });
+    }
+    
+    // 3. Search text
     if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
-        list = list.filter(e => e.eo_number.toLowerCase().includes(q) || (e.title && e.title.toLowerCase().includes(q)));
+        list = list.filter(item => {
+            // Adjust to item.ordinance_number for the Ordinance file
+            const trackingNo = item.eo_number ? item.eo_number.toLowerCase() : ''; 
+            const title = item.title ? item.title.toLowerCase() : '';
+            return trackingNo.includes(q) || title.includes(q);
+        });
     }
+    
     return list.slice(0, 15);
 });
 
@@ -120,7 +139,7 @@ const clearParent = () => {
     parentSearchQuery.value = '';
 };
 
-// --- DYNAMIC ARRAY HELPERS (MINIMUM 5, ALLOWS UNLIMITED) ---
+// --- DYNAMIC ARRAY HELPERS ---
 const parseMembers = (val: any) => {
     let parsed: string[] = [];
     if (Array.isArray(val)) {
@@ -153,27 +172,86 @@ const removeMember = (field: string, index: number) => {
     else if (field === 'program_external') form.committee_details.program.external_members.splice(index, 1);
 };
 
-// --- SUGGESTIVE INPUT LOGIC (PEOPLE & DEPARTMENTS) ---
+// --- SUGGESTIVE INPUT LOGIC (PEOPLE & PRIVACY) ---
 const activeSuggestion = ref<string | null>(null);
 
-const getSuggestions = (query: any, typeFilter: string | null = null) => {
-    if (!query || typeof query !== 'string') {
-        let list = props.peopleRegistry ? props.peopleRegistry : [];
-        if (typeFilter) list = list.filter(p => p.type === typeFilter);
-        return list.slice(0, 10);
+const getDeptCode = (titleStr?: string) => {
+    if (!titleStr) return '';
+    const match = titleStr.match(/\(([^)]+)\)/);
+    if (match) {
+        const officeName = match[1].trim();
+        const dept = props.departments.find(d => d.name === officeName);
+        return dept && dept.code ? dept.code : officeName; 
+    }
+    return '';
+};
+
+const normalize = (s: string) => s ? String(s).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+
+const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: number = -1) => {
+    const selected = new Set<string>();
+    const c = form.committee_details.council;
+    const p = form.committee_details.program;
+
+    const addVal = (val: any, field: string, idx: number = -1) => {
+        if (field === ignoreField && idx === ignoreIndex) return;
+        if (!val) return;
+        
+        if (typeof val === 'string') {
+            val.split(/[,]+/).forEach(v => {
+                const norm = normalize(v);
+                if (norm) selected.add(norm);
+            });
+        } else if (Array.isArray(val)) {
+            val.forEach(v => {
+                if (typeof v === 'string') {
+                    const norm = normalize(v);
+                    if (norm) selected.add(norm);
+                }
+            });
+        }
+    };
+
+    addVal(c.chairman, 'chairman');
+    addVal(c.co_chairmans, 'co_chairman'); 
+    addVal(c.vice_chairman, 'vice_chairman');
+    addVal(c.lead_secretariat, 'lead_secretariat');
+    addVal(c.twg_head, 'twg_head');
+
+    if (Array.isArray(c.internal_members)) c.internal_members.forEach((v, i) => addVal(v, 'council_internal', i));
+    if (Array.isArray(c.external_members)) c.external_members.forEach((v, i) => addVal(v, 'council_external', i));
+    if (Array.isArray(c.secretariat_members)) c.secretariat_members.forEach((v, i) => addVal(v, 'secretariat_members', i));
+    if (Array.isArray(c.twg_internal_members)) c.twg_internal_members.forEach((v, i) => addVal(v, 'twg_internal', i));
+    if (Array.isArray(c.twg_external_members)) c.twg_external_members.forEach((v, i) => addVal(v, 'twg_external', i));
+    
+    if (Array.isArray(p.internal_members)) p.internal_members.forEach((v, i) => addVal(v, 'program_internal', i));
+    if (Array.isArray(p.external_members)) p.external_members.forEach((v, i) => addVal(v, 'program_external', i));
+
+    return Array.from(selected);
+};
+
+const getSuggestions = (query: any, typeFilter: string | null = null, fieldName: string | null = null, idx: number = -1) => {
+    let list = props.peopleRegistry || [];
+    if (typeFilter) list = list.filter(p => p.type === typeFilter);
+
+    const globallySelectedNames = getCurrentlySelectedPeople(fieldName, idx);
+    if (globallySelectedNames.length > 0) {
+        list = list.filter(p => !globallySelectedNames.includes(normalize(p.name || '')));
+    }
+
+    if (!query || typeof query !== 'string' || query.trim() === '') {
+        return []; 
     }
 
     const parts = query.split(/[\n,]+/).map(s => s.trim());
     const currentSearch = parts[parts.length - 1].toLowerCase();
 
-    if (!currentSearch) {
-        let list = props.peopleRegistry ? props.peopleRegistry : [];
-        if (typeFilter) list = list.filter(p => p.type === typeFilter);
-        return list.slice(0, 10);
+    // 🚀 THE FIX: Require at least 2 characters before showing the dropdown
+    if (!currentSearch || currentSearch.length < 2) {
+        return []; 
     }
 
-    return props.peopleRegistry.filter(p => {
-        if (typeFilter && p.type !== typeFilter) return false;
+    return list.filter(p => {
         const safeName = p.name ? String(p.name).toLowerCase() : '';
         const safeTitle = p.title ? String(p.title).toLowerCase() : '';
         return safeName.includes(currentSearch) || safeTitle.includes(currentSearch);
@@ -201,6 +279,7 @@ const selectPerson = (field: string, name: string, index?: number) => {
     activeSuggestion.value = null;
 };
 
+// LEAD OFFICE SUGGESTIONS
 const leadOfficeSearch = ref('');
 const filteredLeadOffices = computed(() => {
     if (!leadOfficeSearch.value) return props.departments.slice(0, 10);
@@ -253,12 +332,36 @@ const form = useForm({
     committee_details: defaultCommitteeDetails(), 
 });
 
+const handleTypeChange = () => {
+    const type = form.committee_details.type;
+    if (type === 'none') {
+        form.committee_details.council = defaultCommitteeDetails().council;
+        form.committee_details.program = defaultCommitteeDetails().program;
+    } else if (type === 'council') {
+        form.declaration = '';
+        form.committee_details.program = defaultCommitteeDetails().program;
+    } else if (type === 'program') {
+        form.declaration = '';
+        form.committee_details.council = defaultCommitteeDetails().council;
+    }
+};
+
+const formatForInput = (dateStr: string | null) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr.split('T')[0].split(' ')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 function openAddDialog() {
     isEdit.value = false;
     editingId.value = null;
     selectedRecord.value = null;
     activeModalTab.value = 'details';
-    activeCouncilTab.value = 'committee'; // Reset inner tab
+    activeCouncilTab.value = 'committee'; 
     parentSearchQuery.value = ''; 
     leadOfficeSearch.value = '';
 
@@ -277,7 +380,7 @@ function openEditDialog(eo: any) {
     editingId.value = eo.id;
     selectedRecord.value = eo; 
     activeModalTab.value = 'details';
-    activeCouncilTab.value = 'committee'; // Reset inner tab
+    activeCouncilTab.value = 'committee'; 
     
     form.clearErrors();
     
@@ -285,8 +388,10 @@ function openEditDialog(eo: any) {
     form.title = eo.title;
     form.classification_id = eo.classification_id || ''; 
     form.status_id = eo.status_id || '';
-    form.date_issued = eo.date_issued ? eo.date_issued.split('T')[0] : '';
-    form.effectivity_date = eo.effectivity_date ? eo.effectivity_date.split('T')[0] : '';
+    
+    form.date_issued = formatForInput(eo.date_issued);
+    form.effectivity_date = formatForInput(eo.effectivity_date);
+    
     form.legal_basis = eo.legal_basis || '';
     form.declaration = eo.declaration || '';
     form.is_active = Boolean(eo.is_active);
@@ -352,47 +457,38 @@ function handleFileChange(e: Event) {
 function submitForm() {
     const joinMembers = (arr: any[]) => Array.isArray(arr) ? arr.filter(v => typeof v === 'string' && v.trim() !== '').join(',\n') : '';
 
-    if (isEdit.value && editingId.value) {
-        form.transform((data) => {
-            const transformed = JSON.parse(JSON.stringify(data));
-            transformed.file = data.file;
+    form.transform((data) => {
+        const transformed = JSON.parse(JSON.stringify(data));
+        transformed.file = data.file;
 
-            if (transformed.committee_details.type === 'council') {
-                transformed.committee_details.council.internal_members = joinMembers(transformed.committee_details.council.internal_members);
-                transformed.committee_details.council.external_members = joinMembers(transformed.committee_details.council.external_members);
-                transformed.committee_details.council.secretariat_members = joinMembers(transformed.committee_details.council.secretariat_members);
-                transformed.committee_details.council.twg_internal_members = joinMembers(transformed.committee_details.council.twg_internal_members);
-                transformed.committee_details.council.twg_external_members = joinMembers(transformed.committee_details.council.twg_external_members);
-            } else if (transformed.committee_details.type === 'program') {
-                transformed.committee_details.program.internal_members = joinMembers(transformed.committee_details.program.internal_members);
-                transformed.committee_details.program.external_members = joinMembers(transformed.committee_details.program.external_members);
-            }
-            return { ...transformed, _method: 'PUT' };
-        }).post(route('eo.update', editingId.value), {
-            onSuccess: () => { showDialog.value = false; form.reset(); },
-            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
-        });
-    } else {
-        form.transform((data) => {
-            const transformed = JSON.parse(JSON.stringify(data));
-            transformed.file = data.file;
-            
-            if (transformed.committee_details.type === 'council') {
-                transformed.committee_details.council.internal_members = joinMembers(transformed.committee_details.council.internal_members);
-                transformed.committee_details.council.external_members = joinMembers(transformed.committee_details.council.external_members);
-                transformed.committee_details.council.secretariat_members = joinMembers(transformed.committee_details.council.secretariat_members);
-                transformed.committee_details.council.twg_internal_members = joinMembers(transformed.committee_details.council.twg_internal_members);
-                transformed.committee_details.council.twg_external_members = joinMembers(transformed.committee_details.council.twg_external_members);
-            } else if (transformed.committee_details.type === 'program') {
-                transformed.committee_details.program.internal_members = joinMembers(transformed.committee_details.program.internal_members);
-                transformed.committee_details.program.external_members = joinMembers(transformed.committee_details.program.external_members);
-            }
-            return transformed;
-        }).post(route('eo.store'), {
-            onSuccess: () => { showDialog.value = false; form.reset(); },
-            onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
-        });
-    }
+        if (transformed.committee_details.type === 'none') {
+            transformed.declaration = transformed.declaration || '';
+            transformed.committee_details.council = defaultCommitteeDetails().council;
+            transformed.committee_details.program = defaultCommitteeDetails().program;
+        } else if (transformed.committee_details.type === 'council') {
+            transformed.declaration = '';
+            transformed.committee_details.program = defaultCommitteeDetails().program;
+            transformed.committee_details.council.internal_members = joinMembers(transformed.committee_details.council.internal_members);
+            transformed.committee_details.council.external_members = joinMembers(transformed.committee_details.council.external_members);
+            transformed.committee_details.council.secretariat_members = joinMembers(transformed.committee_details.council.secretariat_members);
+            transformed.committee_details.council.twg_internal_members = joinMembers(transformed.committee_details.council.twg_internal_members);
+            transformed.committee_details.council.twg_external_members = joinMembers(transformed.committee_details.council.twg_external_members);
+        } else if (transformed.committee_details.type === 'program') {
+            transformed.declaration = '';
+            transformed.committee_details.council = defaultCommitteeDetails().council;
+            transformed.committee_details.program.internal_members = joinMembers(transformed.committee_details.program.internal_members);
+            transformed.committee_details.program.external_members = joinMembers(transformed.committee_details.program.external_members);
+        }
+
+        if (isEdit.value) {
+            transformed._method = 'PUT';
+        }
+        
+        return transformed;
+    }).post(isEdit.value && editingId.value ? route('eo.update', editingId.value) : route('eo.store'), {
+        onSuccess: () => { showDialog.value = false; form.reset(); },
+        onError: () => { notyf.error('Please check the form for missing or invalid fields.'); }
+    });
 }
 
 const getLeadOffice = (depts: any[]) => {
@@ -449,7 +545,7 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                             <span class="font-mono font-bold text-blue-600 text-base">{{ eo.eo_number }}</span>
                                             <div class="text-xs text-gray-600 mt-1 flex flex-col gap-0.5">
                                                 <span><span class="text-gray-400 font-medium">Issued:</span> {{ formatDate(eo.date_issued) }}</span>
-                                                <span><span class="text-gray-400 font-medium">Effective:</span> {{ formatDate(eo.effectivity_date) }}</span>
+                                                <span class="text-blue-500">Eff: {{ formatDate(eo.effectivity_date) }}</span>
                                             </div>
                                             <div v-if="!eo.is_active" class="mt-1 inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded bg-red-100 text-red-600 text-[10px] font-bold uppercase border border-red-200">
                                                 <XCircle class="w-3 h-3" /> Inactive
@@ -516,7 +612,7 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar" @click="activeSuggestion = null; showParentDropdown = false">
                         
-                        <div class="flex items-center justify-between mb-6 sticky top-0 bg-white/95 backdrop-blur py-2 z-20 border-b border-gray-100 pb-4">
+                        <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
                             <div>
                                 <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
                                     <FileText class="w-5 h-5 text-blue-600" />
@@ -557,12 +653,13 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5 pt-2">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">EO Number <span class="text-red-500">*</span></label>
-                                        <input v-model="form.eo_number" type="text" placeholder="e.g. EO No. 1, s. 2026" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
+                                        <input v-model="form.eo_number" type="text" placeholder="e.g. EO No. 1, s. 2026" class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.eo_number ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" required />
+                                        <p v-if="form.errors.eo_number" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.eo_number }}</p>
                                     </div>
                                     
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-blue-600 uppercase">Structure Type</label>
-                                        <select v-model="form.committee_details.type" class="w-full rounded-lg border border-blue-300 text-sm px-3 py-2 bg-blue-50/50 text-blue-800 font-bold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                                        <select v-model="form.committee_details.type" @change="handleTypeChange" class="w-full rounded-lg border border-blue-300 text-sm px-3 py-2 bg-blue-50/50 text-blue-800 font-bold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
                                             <option value="none">Standard EO</option>
                                             <option value="council">Council / Committee / TWG</option>
                                             <option value="program">Program-Based Initiative</option>
@@ -571,50 +668,49 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
 
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Status <span class="text-red-500">*</span></label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <select v-model="form.status_id" class="w-full rounded-lg border text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.status_id ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" required>
                                             <option value="" disabled>Select Status</option>
                                             <option v-for="status in selectableStatuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                         </select>
+                                        <p v-if="form.errors.status_id" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.status_id }}</p>
                                     </div>
 
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Classification</label>
-                                        <select v-model="form.classification_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                        <select v-model="form.classification_id" class="w-full rounded-lg border text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.classification_id ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'">
                                             <option value="">Select Classification</option>
                                             <option v-for="cls in classifications" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
                                         </select>
+                                        <p v-if="form.errors.classification_id" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.classification_id }}</p>
                                     </div>
                                 </div>
 
                                 <div class="space-y-4 pt-2">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Executive Order Title <span class="text-red-500">*</span></label>
-                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full title including subject matter..." required></textarea>
+                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.title ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" placeholder="Full title including subject matter..." required></textarea>
+                                        <p v-if="form.errors.title" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.title }}</p>
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="space-y-4 mt-4">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Legal Basis</label>
-                                        <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. LGC Section 455" />
+                                        <input v-model="form.legal_basis" type="text" class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.legal_basis ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" placeholder="e.g. LGC Section 455" />
+                                        <p v-if="form.errors.legal_basis" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.legal_basis }}</p>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-4">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Date Issued <span class="text-red-500">*</span></label>
-                                            <input v-model="form.date_issued" type="date" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
+                                            <input v-model="form.date_issued" type="date" class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.date_issued ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" required />
+                                            <p v-if="form.errors.date_issued" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.date_issued }}</p>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Effectivity</label>
-                                            <input v-model="form.effectivity_date" type="date" :min="form.date_issued" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+                                            <input v-model="form.effectivity_date" type="date" :min="form.date_issued" class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :class="form.errors.effectivity_date ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'" />
+                                            <p v-if="form.errors.effectivity_date" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.effectivity_date }}</p>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div class="flex items-center justify-end gap-3 mt-4">
-                                    <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Active Status</span>
-                                    <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-blue-500" :class="form.is_active ? 'bg-green-500' : 'bg-gray-300'">
-                                        <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'" />
-                                    </button>
                                 </div>
 
                                 <Transition name="fade">
@@ -670,8 +766,9 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                 <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">2. Signed Document</div>
                                 <div class="pt-2">
                                     <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Upload PDF File</label>
-                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-medium hover:file:bg-blue-700 cursor-pointer transition-colors"/>
-                                    <p class="text-[10px] text-gray-400 mt-2 italic">Max size 20MB. Ensure the document is fully signed before uploading.</p>
+                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-medium hover:file:bg-blue-700 cursor-pointer transition-colors" :class="{'ring-2 ring-red-500 border border-red-500 rounded-lg': form.errors.file}"/>
+                                    <p v-if="form.errors.file" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.file }}</p>
+                                    <p v-else class="text-[10px] text-gray-400 mt-2 italic">Max size 20MB. Ensure the document is fully signed before uploading.</p>
                                 </div>
                             </div>
 
@@ -713,8 +810,10 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                     <textarea 
                                         v-model="form.declaration" 
                                         rows="4" 
-                                        class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" 
+                                        class="w-full rounded-lg border text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" 
+                                        :class="form.errors.declaration ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'"
                                         placeholder="Enter the main declaration, directive, or order..."></textarea>
+                                    <p v-if="form.errors.declaration" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.declaration }}</p>
                                 </div>
 
                                 <div v-if="form.committee_details.type === 'council'" class="space-y-6 animate-in fade-in duration-300">
@@ -736,13 +835,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                     @input="activeSuggestion = 'chairman'"
                                                     type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                 
-                                                <div v-if="activeSuggestion === 'chairman' && getSuggestions(form.committee_details.council.chairman).length > 0" 
+                                                <div v-if="activeSuggestion === 'chairman' && getSuggestions(form.committee_details.council.chairman, null, 'chairman').length > 0" 
                                                      class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.chairman)" :key="idx"
+                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.chairman, null, 'chairman')" :key="idx"
                                                          @mousedown.prevent="selectPerson('chairman', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                        <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                        <div class="text-sm font-bold text-gray-800">
+                                                            {{ person.name }}
+                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -756,13 +858,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                     @input="activeSuggestion = 'co_chairman'"
                                                     type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                 
-                                                <div v-if="activeSuggestion === 'co_chairman' && getSuggestions(form.committee_details.council.co_chairmans).length > 0" 
+                                                <div v-if="activeSuggestion === 'co_chairman' && getSuggestions(form.committee_details.council.co_chairmans, null, 'co_chairman').length > 0" 
                                                      class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.co_chairmans)" :key="idx"
+                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.co_chairmans, null, 'co_chairman')" :key="idx"
                                                          @mousedown.prevent="selectPerson('co_chairman', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                        <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                        <div class="text-sm font-bold text-gray-800">
+                                                            {{ person.name }}
+                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -776,13 +881,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                     @input="activeSuggestion = 'vice_chairman'"
                                                     type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                 
-                                                <div v-if="activeSuggestion === 'vice_chairman' && getSuggestions(form.committee_details.council.vice_chairman).length > 0" 
+                                                <div v-if="activeSuggestion === 'vice_chairman' && getSuggestions(form.committee_details.council.vice_chairman, null, 'vice_chairman').length > 0" 
                                                      class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.vice_chairman)" :key="idx"
+                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.vice_chairman, null, 'vice_chairman')" :key="idx"
                                                          @mousedown.prevent="selectPerson('vice_chairman', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                        <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                        <div class="text-sm font-bold text-gray-800">
+                                                            {{ person.name }}
+                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -801,13 +909,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                             @input="activeSuggestion = 'council_internal_' + index"
                                                             type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                         
-                                                        <div v-if="activeSuggestion === 'council_internal_' + index && getSuggestions(form.committee_details.council.internal_members[index], 'Internal').length > 0" 
+                                                        <div v-if="activeSuggestion === 'council_internal_' + index && getSuggestions(form.committee_details.council.internal_members[index], 'Internal', 'council_internal', index).length > 0" 
                                                              class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.internal_members[index], 'Internal')" :key="idx"
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.internal_members[index], 'Internal', 'council_internal', index)" :key="idx"
                                                                  @mousedown.prevent="selectPerson('council_internal', person.name, index)"
                                                                  class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                                <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-blue-600">{{ person.type }}</span></div>
+                                                                <div class="text-sm font-bold text-gray-800">
+                                                                    {{ person.name }}
+                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                                </div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -832,13 +943,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                             @input="activeSuggestion = 'council_external_' + index"
                                                             type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                         
-                                                        <div v-if="activeSuggestion === 'council_external_' + index && getSuggestions(form.committee_details.council.external_members[index], 'External').length > 0" 
+                                                        <div v-if="activeSuggestion === 'council_external_' + index && getSuggestions(form.committee_details.council.external_members[index], 'External', 'council_external', index).length > 0" 
                                                              class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.external_members[index], 'External')" :key="idx"
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.external_members[index], 'External', 'council_external', index)" :key="idx"
                                                                  @mousedown.prevent="selectPerson('council_external', person.name, index)"
                                                                  class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                                <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-green-600">{{ person.type }}</span></div>
+                                                                <div class="text-sm font-bold text-gray-800">
+                                                                    {{ person.name }}
+                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                                </div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -865,47 +979,53 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                         @input="activeSuggestion = 'lead_secretariat'"
                                                         type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                     
-                                                    <div v-if="activeSuggestion === 'lead_secretariat' && getSuggestions(form.committee_details.council.lead_secretariat).length > 0" 
+                                                    <div v-if="activeSuggestion === 'lead_secretariat' && getSuggestions(form.committee_details.council.lead_secretariat, null, 'lead_secretariat').length > 0" 
                                                          class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.council.lead_secretariat)" :key="idx"
+                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.council.lead_secretariat, null, 'lead_secretariat')" :key="idx"
                                                              @mousedown.prevent="selectPerson('lead_secretariat', person.name)"
                                                              class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                            <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                            <div class="text-sm font-bold text-gray-800">
+                                                                {{ person.name }}
+                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                            </div>
+                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            
-                                            <div class="space-y-2">
-                                                <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">Secretariat Members</label>
-                                                <div v-for="(member, index) in form.committee_details.council.secretariat_members" :key="'sm_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                    <div class="relative flex-1">
-                                                        <input 
-                                                            v-model="form.committee_details.council.secretariat_members[index]" 
-                                                            @focus.stop="activeSuggestion = 'secretariat_members_' + index"
-                                                            @click.stop="activeSuggestion = 'secretariat_members_' + index"
-                                                            @input="activeSuggestion = 'secretariat_members_' + index"
-                                                            type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
-                                                        
-                                                        <div v-if="activeSuggestion === 'secretariat_members_' + index && getSuggestions(form.committee_details.council.secretariat_members[index]).length > 0" 
-                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.secretariat_members[index])" :key="idx"
-                                                                 @mousedown.prevent="selectPerson('secretariat_members', person.name, index)"
-                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                                <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                
+                                                <div class="space-y-2">
+                                                    <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">Secretariat Members</label>
+                                                    <div v-for="(member, index) in form.committee_details.council.secretariat_members" :key="'sm_'+index" class="relative flex items-center gap-2">
+                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
+                                                        <div class="relative flex-1">
+                                                            <input 
+                                                                v-model="form.committee_details.council.secretariat_members[index]" 
+                                                                @focus.stop="activeSuggestion = 'secretariat_members_' + index"
+                                                                @click.stop="activeSuggestion = 'secretariat_members_' + index"
+                                                                @input="activeSuggestion = 'secretariat_members_' + index"
+                                                                type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                            
+                                                            <div v-if="activeSuggestion === 'secretariat_members_' + index && getSuggestions(form.committee_details.council.secretariat_members[index], null, 'secretariat_members', index).length > 0" 
+                                                                 class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(form.committee_details.council.secretariat_members[index], null, 'secretariat_members', index)" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('secretariat_members', person.name, index)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">
+                                                                        {{ person.name }}
+                                                                        <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                                    </div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                                </div>
                                                             </div>
                                                         </div>
+                                                        <button @click="removeMember('secretariat_members', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.secretariat_members.length > 1">
+                                                            <XCircle class="w-4 h-4" />
+                                                        </button>
                                                     </div>
-                                                    <button @click="removeMember('secretariat_members', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.secretariat_members.length > 1">
-                                                        <XCircle class="w-4 h-4" />
+                                                    <button type="button" @click="addMember('secretariat_members')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                        <Plus class="w-3.5 h-3.5" /> Add Row
                                                     </button>
                                                 </div>
-                                                <button type="button" @click="addMember('secretariat_members')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                    <Plus class="w-3.5 h-3.5" /> Add Row
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -921,13 +1041,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                     @input="activeSuggestion = 'twg_head'"
                                                     type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                 
-                                                <div v-if="activeSuggestion === 'twg_head' && getSuggestions(form.committee_details.council.twg_head).length > 0" 
+                                                <div v-if="activeSuggestion === 'twg_head' && getSuggestions(form.committee_details.council.twg_head, null, 'twg_head').length > 0" 
                                                      class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_head)" :key="idx"
+                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_head, null, 'twg_head')" :key="idx"
                                                          @mousedown.prevent="selectPerson('twg_head', person.name)"
                                                          class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                        <div class="text-[10px] text-gray-500">{{ person.title }} • <span :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</span></div>
+                                                        <div class="text-sm font-bold text-gray-800">
+                                                            {{ person.name }}
+                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -946,13 +1069,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                             @input="activeSuggestion = 'twg_internal_' + index"
                                                             type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                         
-                                                        <div v-if="activeSuggestion === 'twg_internal_' + index && getSuggestions(form.committee_details.council.twg_internal_members[index], 'Internal').length > 0" 
+                                                        <div v-if="activeSuggestion === 'twg_internal_' + index && getSuggestions(form.committee_details.council.twg_internal_members[index], 'Internal', 'twg_internal', index).length > 0" 
                                                              class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_internal_members[index], 'Internal')" :key="idx"
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_internal_members[index], 'Internal', 'twg_internal', index)" :key="idx"
                                                                  @mousedown.prevent="selectPerson('twg_internal', person.name, index)"
                                                                  class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                                <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-blue-600">{{ person.type }}</span></div>
+                                                                <div class="text-sm font-bold text-gray-800">
+                                                                    {{ person.name }}
+                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                                </div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -977,13 +1103,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                             @input="activeSuggestion = 'twg_external_' + index"
                                                             type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                         
-                                                        <div v-if="activeSuggestion === 'twg_external_' + index && getSuggestions(form.committee_details.council.twg_external_members[index], 'External').length > 0" 
+                                                        <div v-if="activeSuggestion === 'twg_external_' + index && getSuggestions(form.committee_details.council.twg_external_members[index], 'External', 'twg_external', index).length > 0" 
                                                              class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_external_members[index], 'External')" :key="idx"
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_external_members[index], 'External', 'twg_external', index)" :key="idx"
                                                                  @mousedown.prevent="selectPerson('twg_external', person.name, index)"
                                                                  class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                                <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-green-600">{{ person.type }}</span></div>
+                                                                <div class="text-sm font-bold text-gray-800">
+                                                                    {{ person.name }}
+                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                                </div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1021,13 +1150,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                         @input="activeSuggestion = 'program_internal_' + index"
                                                         type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                     
-                                                    <div v-if="activeSuggestion === 'program_internal_' + index && getSuggestions(form.committee_details.program.internal_members[index], 'Internal').length > 0" 
+                                                    <div v-if="activeSuggestion === 'program_internal_' + index && getSuggestions(form.committee_details.program.internal_members[index], 'Internal', 'program_internal', index).length > 0" 
                                                          class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.program.internal_members[index], 'Internal')" :key="idx"
+                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.program.internal_members[index], 'Internal', 'program_internal', index)" :key="idx"
                                                              @mousedown.prevent="selectPerson('program_internal', person.name, index)"
                                                              class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                            <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-blue-600">{{ person.type }}</span></div>
+                                                            <div class="text-sm font-bold text-gray-800">
+                                                                {{ person.name }}
+                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                            </div>
+                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1052,13 +1184,16 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                         @input="activeSuggestion = 'program_external_' + index"
                                                         type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
                                                     
-                                                    <div v-if="activeSuggestion === 'program_external_' + index && getSuggestions(form.committee_details.program.external_members[index], 'External').length > 0" 
+                                                    <div v-if="activeSuggestion === 'program_external_' + index && getSuggestions(form.committee_details.program.external_members[index], 'External', 'program_external', index).length > 0" 
                                                          class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.program.external_members[index], 'External')" :key="idx"
+                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.program.external_members[index], 'External', 'program_external', index)" :key="idx"
                                                              @mousedown.prevent="selectPerson('program_external', person.name, index)"
                                                              class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
-                                                            <div class="text-[10px] text-gray-500">{{ person.title }} • <span class="text-green-600">{{ person.type }}</span></div>
+                                                            <div class="text-sm font-bold text-gray-800">
+                                                                {{ person.name }}
+                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                            </div>
+                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
                                                     </div>
                                                 </div>

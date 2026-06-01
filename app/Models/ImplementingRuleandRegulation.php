@@ -16,6 +16,7 @@ class ImplementingRuleandRegulation extends Model
 
     protected $casts = [
         'support_office_ids' => 'array',
+        'external_institutions' => 'array',
     ];
 
     public function getFileUrlAttribute()

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { 
-    FileText, AlertCircle, ArrowUpRight, Building2, Activity, Gavel, Filter, BookOpen, TrendingUp, Award 
+    FileText, Gavel, BookOpen, TrendingUp, PieChart, BarChart3, Award, Filter, ArrowUpRight
 } from 'lucide-vue-next';
 import VueApexCharts from 'vue3-apexcharts';
 import { computed, ref, watch } from 'vue';
@@ -10,72 +10,100 @@ import { debounce } from 'lodash';
 
 const props = defineProps<{
     stats: any;
-    trend_chart: {
-        labels: string[];
-        data: number[];
-        year: number;
-    };
-    recent_activity: Array<any>;
+    eo_analytics: { trend: number[]; trend_labels: string[]; class_labels: string[]; class_data: number[]; status_labels: string[]; status_data: number[] };
+    ord_analytics: { trend: number[]; trend_labels: string[]; status_labels: string[]; status_data: number[] };
+    recent_eos: Array<any>;
+    recent_ords: Array<any>;
     top_departments: Array<any>;
     filters: any;
     available_years: number[];
-    available_classifications: Array<{ id: number; name: string }>; // Updated Prop
+    available_classifications: Array<{ id: number; name: string }>;
+    available_statuses: Array<{ id: number; name: string }>;
 }>();
 
-// --- Filter State ---
-const selectedYear = ref(props.filters.year);
-const selectedActive = ref(props.filters.is_active);
-const selectedClass = ref(props.filters.classification);
-const trendTime = ref(props.filters.trend_time);
-const trendType = ref(props.filters.trend_type);
-const deptType = ref(props.filters.dept_type);
+// --- EO Filters ---
+const eoYear = ref(props.filters.eo_year || new Date().getFullYear());
+const eoClass = ref(props.filters.eo_class || 'all');
+const eoStatus = ref(props.filters.eo_status || 'all');
+const eoActive = ref(props.filters.eo_active || 'all');
+const eoTrendTime = ref(props.filters.eo_trend_time || 'monthly');
+
+// --- Ordinance Filters ---
+const ordYear = ref(props.filters.ord_year || new Date().getFullYear());
+const ordStatus = ref(props.filters.ord_status || 'all');
+const ordIrr = ref(props.filters.ord_irr || 'all');
+const ordActive = ref(props.filters.ord_active || 'all');
+const ordTrendTime = ref(props.filters.ord_trend_time || 'monthly');
 
 // --- Reload Dashboard ---
 const updateDashboard = debounce(() => {
     router.get('/dashboard', { 
-        year: selectedYear.value, 
-        is_active: selectedActive.value,
-        classification: selectedClass.value,
-        trend_time: trendTime.value,
-        trend_type: trendType.value,
-        dept_type: deptType.value,
-    }, { 
-        preserveState: true, 
-        preserveScroll: true,
-        only: ['stats', 'trend_chart', 'recent_activity', 'top_departments', 'filters'] 
-    });
+        eo_year: eoYear.value, eo_class: eoClass.value, eo_status: eoStatus.value, eo_active: eoActive.value, eo_trend_time: eoTrendTime.value,
+        ord_year: ordYear.value, ord_status: ordStatus.value, ord_irr: ordIrr.value, ord_active: ordActive.value, ord_trend_time: ordTrendTime.value
+    }, { preserveState: true, preserveScroll: true });
 }, 300);
 
-watch([selectedYear, selectedActive, selectedClass, trendTime, trendType, deptType], () => {
-    updateDashboard();
-});
+// Just watch the core filters, the trend dropdowns trigger updateDashboard directly
+watch([eoYear, eoClass, eoStatus, eoActive, ordYear, ordStatus, ordIrr, ordActive], updateDashboard);
 
-// --- Dynamic Chart Config ---
-const chartOptions = computed(() => ({
-    chart: { type: 'area', height: 350, fontFamily: 'inherit', toolbar: { show: false }, zoom: { enabled: false } },
-    colors: ['#16a34a'],
-    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 90, 100] } },
+// --- Helpers ---
+const getStatusColor = (statusName: string) => {
+    switch(statusName) {
+        case 'Active': case 'In Effect': return 'bg-emerald-100 text-emerald-700';
+        case 'Amended': return 'bg-blue-100 text-blue-700';
+        case 'Repealed': return 'bg-red-100 text-red-700';
+        case 'Superseded': return 'bg-indigo-100 text-indigo-700';
+        case 'Suspended': return 'bg-amber-100 text-amber-700';
+        default: return 'bg-gray-100 text-gray-700';
+    }
+};
+
+const pieColors = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#64748b'];
+
+// --- Compact ApexCharts Configurations ---
+const baseChartOptions = {
+    chart: { fontFamily: 'inherit', toolbar: { show: false }, parentHeightOffset: 0 },
     dataLabels: { enabled: false },
+    grid: { show: true, borderColor: '#f1f5f9', strokeDashArray: 4, padding: { top: 0, right: 0, bottom: 0, left: 10 } }
+};
+
+const eoTrendOptions = computed(() => ({
+    ...baseChartOptions,
+    chart: { ...baseChartOptions.chart, type: 'area' },
+    colors: ['#2563eb'], 
     stroke: { curve: 'smooth', width: 2 },
-    xaxis: { 
-        categories: props.trend_chart.labels,
-        axisBorder: { show: false }, axisTicks: { show: false }, tooltip: { enabled: false } 
-    },
-    yaxis: { show: true, tickAmount: 3, labels: { formatter: (val: number) => Math.round(val) } },
-    grid: { borderColor: '#f1f5f9', strokeDashArray: 4, yaxis: { lines: { show: true } } },
-    tooltip: { theme: 'light' }
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0 } },
+    xaxis: { categories: props.eo_analytics.trend_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
+    yaxis: { tickAmount: 3, labels: { style: { fontSize: '10px', colors: '#64748b' }, formatter: (val: number) => Math.round(val) } }
 }));
 
-const chartSeries = computed(() => [{
-    name: 'Total Issuances', 
-    data: props.trend_chart.data
-}]);
+const ordTrendOptions = computed(() => ({
+    ...eoTrendOptions.value,
+    colors: ['#4f46e5'], 
+    xaxis: { categories: props.ord_analytics.trend_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
+}));
 
-// Helper for Department Visuals
-const getMaxDeptValue = () => {
-    if (props.top_departments.length === 0) return 1;
-    return Math.max(...props.top_departments.map((d: any) => d.total_involved));
-};
+const eoClassOptions = computed(() => ({
+    ...baseChartOptions,
+    chart: { ...baseChartOptions.chart, type: 'bar' },
+    colors: ['#3b82f6'],
+    plotOptions: { bar: { horizontal: false, borderRadius: 4, columnWidth: '40%' } },
+    xaxis: { categories: props.eo_analytics.class_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
+    yaxis: { tickAmount: 3, labels: { style: { fontSize: '10px', colors: '#64748b' }, formatter: (val: number) => Math.round(val) } },
+}));
+
+const pieOptions = (labels: string[]) => ({
+    chart: { type: 'donut', fontFamily: 'inherit', parentHeightOffset: 0 },
+    labels: labels,
+    colors: pieColors,
+    plotOptions: { pie: { donut: { size: '75%', labels: { show: true, name: {show: false}, value: { fontSize: '24px', fontWeight: 'bold', offsetY: 8 } } } } },
+    dataLabels: { enabled: false },
+    stroke: { width: 0 },
+    legend: { show: true, position: 'right', fontSize: '11px', markers: { radius: 12 } }
+});
+
+const eoStatusOptions = computed(() => pieOptions(props.eo_analytics.status_labels));
+const ordStatusOptions = computed(() => pieOptions(props.ord_analytics.status_labels));
 
 const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 </script>
@@ -84,205 +112,209 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
     <Head title="Dashboard" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex flex-1 flex-col gap-6 p-4 md:p-8 overflow-y-auto">
-            
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Overview</h2>
-                    <p class="text-sm text-gray-500">Legislative performance and status report.</p>
-                </div>
-                
-                <div class="flex items-center gap-3 bg-white p-1.5 rounded-xl border shadow-sm flex-wrap">
-                    <div class="px-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-r pr-4">
-                        <Filter class="w-4 h-4" /> Filters
-                    </div>
-                    
-                    <select v-model="selectedClass" class="border-0 bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pr-8">
-                        <option value="all">All Classifications</option>
-                        <!-- Updated to use c.id and c.name -->
-                        <option v-for="c in available_classifications" :key="c.id" :value="c.id">{{ c.name }}</option>
-                    </select>
+        <div class="p-4 md:p-6 lg:p-8 bg-[#f8fafc] min-h-screen font-sans text-gray-900 space-y-6">
 
-                    <select v-model="selectedYear" class="border-0 border-l bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pl-4 pr-8">
-                        <option value="all">All Years</option>
-                        <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
-                    </select>
-
-                    <select v-model="selectedActive" class="border-0 border-l bg-transparent text-sm font-semibold text-gray-700 focus:ring-0 cursor-pointer py-1 pl-4 pr-8">
-                        <option value="all">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">       
-                <div class="rounded-xl border bg-white p-6 shadow-sm">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Executive Orders</p> 
-                        <div class="rounded-full bg-blue-50 p-2 text-blue-600"><FileText class="h-4 w-4" /></div>
+            <!-- STATS ROW (Unified Bento Style, 3 Cards) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">       
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-2">
+                        <p class="text-sm font-medium text-gray-500">Total Executive Orders</p>
+                        <Link href="/eo" class="p-1.5 rounded-full hover:bg-blue-50 transition-colors group/link" title="Go to Executive Orders">
+                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-blue-600" />
+                        </Link>
                     </div>
-                    <div class="mt-4">
-                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.total_eos }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Total Executive Orders</p>
-                    </div>
+                    <h3 class="text-4xl font-bold text-gray-900">{{ stats.total_eos }}</h3>
+                    <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center"><FileText class="w-2.5 h-2.5 text-blue-600"/></span> Executive Orders
+                    </p>
                 </div>
 
-                <div class="rounded-xl border bg-white p-6 shadow-sm">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Ordinances</p> 
-                        <div class="rounded-full bg-indigo-50 p-2 text-indigo-600"><Gavel class="h-4 w-4" /></div>
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-2">
+                        <p class="text-sm font-medium text-gray-500">Total Ordinances</p>
+                        <Link href="/ordinances" class="p-1.5 rounded-full hover:bg-indigo-50 transition-colors group/link" title="Go to Ordinances">
+                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-indigo-600" />
+                        </Link>
                     </div>
-                    <div class="mt-4">
-                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.total_ordinances }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Total City Ordinances</p>
-                    </div>
+                    <h3 class="text-4xl font-bold text-gray-900">{{ stats.total_ordinances }}</h3>
+                    <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center"><Gavel class="w-2.5 h-2.5 text-indigo-600"/></span> City Ordinances
+                    </p>
                 </div>
 
-                <div class="rounded-xl border bg-white p-6 shadow-sm">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">Active Offices</p>
-                        <div class="rounded-full bg-emerald-50 p-2 text-emerald-600"><Building2 class="h-4 w-4" /></div>
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden cursor-default">
+                    <div class="flex justify-between items-start mb-2">
+                        <p class="text-sm font-medium text-gray-500">Ordinances with IRR's</p>
                     </div>
-                    <div class="mt-4">
-                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.active_offices }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Offices in Legislation</p> </div>
-                </div>
-
-                <div class="rounded-xl border bg-white p-6 shadow-sm">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-gray-500">With IRR's</p>
-                        <div class="rounded-full bg-purple-50 p-2 text-purple-600"><BookOpen class="h-4 w-4" /></div>
-                    </div>
-                    <div class="mt-4">
-                        <h3 class="text-2xl font-bold text-gray-900">{{ stats.ords_with_irrs }}</h3>
-                        <p class="text-xs text-gray-500 mt-1">Ordinances with IRR's</p>
-                    </div>
+                    <h3 class="text-4xl font-bold text-gray-900">{{ stats.ords_with_irrs }}</h3>
+                    <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center"><BookOpen class="w-2.5 h-2.5 text-amber-600"/></span> With Attached Rules and Regulations
+                    </p>
                 </div>
             </div>
 
-            <div class="grid gap-6 lg:grid-cols-3">
-                
-                <div class="rounded-xl border bg-white p-6 shadow-sm lg:col-span-2 flex flex-col">
-                    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div>
-                            <h3 class="font-bold text-gray-900 flex items-center gap-2"><TrendingUp class="w-4 h-4 text-blue-500" /> Issuance Trend</h3>
-                            <p class="text-sm text-gray-500">Volume for {{ trend_chart.year }}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <select v-model="trendType" class="text-xs py-1.5 pl-3 pr-8 border-gray-200 rounded-lg font-medium text-gray-600">
-                                <option value="all">Both Types</option>
-                                <option value="eo">EOs Only</option>
-                                <option value="ord">Ords Only</option>
-                            </select>
-                            <select v-model="trendTime" class="text-xs py-1.5 pl-3 pr-8 border-gray-200 rounded-lg font-medium text-gray-600">
+            <!-- EXECUTIVE ORDERS BENTO -->
+            <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><FileText class="w-5 h-5 text-blue-600" /> Executive Orders</h2>
+                    <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
+                        <select v-model="eoYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All Yrs</option>
+                            <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                        <div class="w-px h-3 bg-gray-200"></div>
+                        <select v-model="eoClass" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All Classes</option>
+                            <option v-for="c in available_classifications" :key="c.id" :value="c.id">{{ c.name }}</option>
+                        </select>
+                        <div class="w-px h-3 bg-gray-200"></div>
+                        <select v-model="eoActive" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All States</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <!-- EO Trend -->
+                    <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-bold text-gray-800">Records Overview</h3>
+                            <select v-model="eoTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
                                 <option value="annual">Annual</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div class="flex-1 min-h-[300px] w-full">
-                        <VueApexCharts type="area" height="100%" :options="chartOptions" :series="chartSeries" />
-                    </div>
-                </div>
-
-                <div class="rounded-xl border bg-white p-6 shadow-sm flex flex-col">
-                    <div class="mb-4 flex items-center gap-2">
-                        <Activity class="h-5 w-5 text-gray-400" />
-                        <h3 class="font-bold text-gray-900">Recent Updates</h3>
-                    </div>
-
-                    <div class="space-y-4 flex-1">
-                        <div v-for="item in recent_activity" :key="item.type + item.id" class="flex items-start gap-3 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                            <div class="mt-1 rounded-full p-1.5" :class="item.type === 'EO' ? 'bg-blue-50' : 'bg-indigo-50'">
-                                <FileText v-if="item.type === 'EO'" class="h-3 w-3 text-blue-600" />
-                                <Gavel v-else class="h-3 w-3 text-indigo-600" />
-                            </div>
-
-                            <div class="min-w-0 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <p class="text-xs font-bold text-gray-900">{{ item.number }}</p>
-                                    <span class="text-[10px] text-gray-400">{{ item.date }}</span>
-                                </div>
-                                <p class="truncate text-xs text-gray-600 mt-0.5" :title="item.title">
-                                    {{ item.title }}
-                                </p>
-                                <div class="mt-1.5 flex items-center gap-1">
-                                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-[10px] font-bold" :class="item.type === 'EO' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'">
-                                        {{ item.type }}
-                                    </span>
-                                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-[10px] font-medium bg-green-50 text-green-700">
-                                        {{ item.status }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="recent_activity.length === 0" class="py-8 text-center">
-                            <p class="text-sm text-gray-400">No recent activity found.</p>
+                        <div class="flex-1 -ml-2 -mb-2">
+                            <VueApexCharts :key="'eotrend'+eo_analytics.trend.join()" type="area" height="180" :options="eoTrendOptions" :series="[{name: 'Issued', data: eo_analytics.trend}]" />
                         </div>
                     </div>
-                    
-                    <div class="mt-4 border-t pt-4 text-center">
-                        <a href="/ordinances" class="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline">
-                            View All Records →
-                        </a>
+
+                    <!-- EO Status Donut -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <h3 class="text-sm font-bold text-gray-800 mb-2">Statuses</h3>
+                        <div class="flex-1 flex items-center justify-center" v-if="eo_analytics.status_data.length > 0">
+                            <VueApexCharts :key="'eostat'+eo_analytics.status_data.length" type="donut" height="160" width="100%" :options="eoStatusOptions" :series="eo_analytics.status_data" />
+                        </div>
+                        <div v-else class="flex-1 flex items-center justify-center text-xs text-gray-400">No data</div>
+                    </div>
+
+                    <!-- EO Classifications -->
+                    <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <h3 class="text-sm font-bold text-gray-800 mb-4">Classifications</h3>
+                        <div class="flex-1 -ml-2 -mb-2" v-if="eo_analytics.class_data.length > 0">
+                            <VueApexCharts :key="'eoclass'+eo_analytics.class_data.length" type="bar" height="180" :options="eoClassOptions" :series="[{name: 'Count', data: eo_analytics.class_data}]" />
+                        </div>
+                        <div v-else class="flex-1 flex items-center justify-center text-xs text-gray-400">No data</div>
+                    </div>
+
+                    <!-- Recent EOs -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+                            <h3 class="text-sm font-bold text-gray-800">Recent Executive Orders</h3>
+                            <Link href="/eo" class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition-colors">+ View All</Link>
+                        </div>
+                        <div class="flex-1 space-y-3 overflow-y-auto custom-scrollbar max-h-[160px]">
+                            <div v-for="item in recent_eos" :key="item.id" class="flex items-center gap-3 group">
+                                <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                    <FileText class="w-4 h-4" />
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-bold text-gray-900 truncate">{{ item.number }}</p>
+                                    <p class="text-[10px] text-gray-500 truncate">{{ item.title }}</p>
+                                </div>
+                                <span :class="['px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 border', getStatusColor(item.status)]">{{ item.status }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-
             </div>
 
-            <div class="rounded-xl border bg-white p-6 shadow-sm">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                    <div>
-                        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2"><Award class="w-4 h-4 text-blue-500" /> Most Active Offices</h3>
-                        <p class="text-xs text-gray-500 mt-1">Departments ranked by involvement in active legislation.</p>
+            <!-- ORDINANCES BENTO -->
+            <div class="space-y-4 pt-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-indigo-600" /> City Ordinances</h2>
+                    <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
+                        <select v-model="ordYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All Yrs</option>
+                            <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                        <div class="w-px h-3 bg-gray-200"></div>
+                        <select v-model="ordIrr" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All Records</option>
+                            <option value="with">With IRR</option>
+                            <option value="without">Without IRR</option>
+                        </select>
+                        <div class="w-px h-3 bg-gray-200"></div>
+                        <select v-model="ordActive" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
+                            <option value="all">All States</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
                     </div>
-                    <select v-model="deptType" class="text-xs py-1.5 pl-3 pr-8 border-gray-200 rounded-lg font-medium text-gray-600 bg-gray-50">
-                        <option value="all">Overall Activity</option>
-                        <option value="eo">EO Activity Only</option>
-                        <option value="ord">Ordinance Activity</option>
-                    </select>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 max-h-[260px] overflow-y-auto pr-3 custom-scrollbar">
-                    
-                    <div v-for="(dept, index) in top_departments" :key="dept.id" class="group flex flex-col justify-center p-2 rounded-lg hover:bg-gray-50/50 transition-colors">
-                        <div class="flex items-end justify-between mb-1.5">
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-black text-gray-300 w-4">{{ index + 1 }}.</span>
-                                <span class="text-sm font-bold text-gray-800 truncate max-w-[220px]" :title="dept.name">{{ dept.name }}</span>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <!-- Ord Trend -->
+                    <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-bold text-gray-800">Records Overview</h3>
+                            <select v-model="ordTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="annual">Annual</option>
+                            </select>
+                        </div>
+                        <div class="flex-1 -ml-2 -mb-2">
+                            <VueApexCharts :key="'ordtrend'+ord_analytics.trend.join()" type="area" height="180" :options="ordTrendOptions" :series="[{name: 'Enacted', data: ord_analytics.trend}]" />
+                        </div>
+                    </div>
+
+                    <!-- Ord Status Donut -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <h3 class="text-sm font-bold text-gray-800 mb-2">Statuses</h3>
+                        <div class="flex-1 flex items-center justify-center" v-if="ord_analytics.status_data.length > 0">
+                            <VueApexCharts :key="'ordstat'+ord_analytics.status_data.length" type="donut" height="160" width="100%" :options="ordStatusOptions" :series="ord_analytics.status_data" />
+                        </div>
+                        <div v-else class="flex-1 flex items-center justify-center text-xs text-gray-400">No data</div>
+                    </div>
+
+                    <!-- Top Departments -->
+                    <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <h3 class="text-sm font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2">Top Implementing Departments</h3>
+                        <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto custom-scrollbar max-h-[160px] pr-2">
+                            <div v-for="(dept, index) in top_departments" :key="dept.id" class="flex items-center gap-3">
+                                <span class="w-6 h-6 flex items-center justify-center font-bold text-xs rounded-full shrink-0"
+                                      :class="index === 0 ? 'bg-amber-100 text-amber-600' : (index === 1 ? 'bg-slate-200 text-slate-600' : (index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'))">
+                                    {{ index + 1 }}
+                                </span>
+                                <p class="text-xs font-medium text-gray-800 truncate flex-1">{{ dept.name }}</p>
+                                <span class="text-sm font-black text-gray-900">{{ dept.total_involved }}</span>
                             </div>
-                            <span class="text-sm font-black text-gray-900">{{ dept.total_involved }}</span>
-                        </div>
-                        
-                        <div class="w-full bg-gray-100 rounded-full h-3 flex overflow-hidden">
-                            <div 
-                                v-if="dept.lead_count > 0"
-                                class="bg-blue-500 h-full transition-all duration-500"
-                                :style="{ width: `${(dept.lead_count / getMaxDeptValue()) * 100}%` }"
-                                :title="`Lead Office: ${dept.lead_count}`"
-                            ></div>
-                            <div 
-                                v-if="dept.support_count > 0"
-                                class="bg-sky-300 h-full transition-all duration-500 border-l border-white/50"
-                                :style="{ width: `${(dept.support_count / getMaxDeptValue()) * 100}%` }"
-                                :title="`Support / Sponsor: ${dept.support_count}`"
-                            ></div>
-                        </div>
-                        
-                        <div class="flex gap-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity pl-6">
-                            <span class="text-[10px] font-bold text-blue-600 uppercase">Lead: {{ dept.lead_count }}</span>
-                            <span class="text-[10px] font-bold text-sky-500 uppercase">Support: {{ dept.support_count }}</span>
                         </div>
                     </div>
 
-                </div>
-
-                <div v-if="top_departments.length === 0" class="text-center py-10 text-gray-400 text-sm">
-                    No department data available for this filter.
+                    <!-- Recent Ords -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+                            <h3 class="text-sm font-bold text-gray-800">Recent Ordinances</h3>
+                            <Link href="/ordinances" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors">+ View All</Link>
+                        </div>
+                        <div class="flex-1 space-y-3 overflow-y-auto custom-scrollbar max-h-[160px]">
+                            <div v-for="item in recent_ords" :key="item.id" class="flex items-center gap-3 group">
+                                <div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                    <Gavel class="w-4 h-4" />
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-bold text-gray-900 truncate">{{ item.number }}</p>
+                                    <p class="text-[10px] text-gray-500 truncate">{{ item.title }}</p>
+                                </div>
+                                <span :class="['px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 border', getStatusColor(item.status)]">{{ item.status }}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -291,21 +323,8 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: #f8fafc; 
-    border-radius: 8px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1; 
-    border-radius: 8px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8; 
-}
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 </style>

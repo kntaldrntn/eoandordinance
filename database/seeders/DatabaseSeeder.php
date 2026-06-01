@@ -72,7 +72,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Amendment'],
             ['name' => 'Repeal'],
             ['name' => 'Supersede'],
-            ['name' => 'Suspend'],
+            ['name' => 'Suspended'],
             ['name' => 'Amended'],
         ];
 

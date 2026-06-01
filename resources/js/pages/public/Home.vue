@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { 
     Search, Calendar, Download, Building2, Paperclip, 
     AlertCircle, Link as LinkIcon, UserCheck, Gavel, ChevronDown, ChevronUp,
-    CheckCircle2, XCircle, Users 
+    CheckCircle2, XCircle, Users, FileText
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { debounce } from 'lodash'; 
@@ -64,17 +64,77 @@ const toggleHistory = (id: number) => {
     expandedId.value = expandedId.value === id ? null : id;
 };
 
-// --- STYLING HELPERS ---
+// --- STYLING & NEW STRUCTURE HELPERS ---
 
-const hasAuthorDetails = (details: any) => {
-    if (!details) return false;
+const getParsedExt = (val: any) => {
+    if (typeof val === 'string') {
+        try { 
+            // Try to parse it as JSON (for the new 3-tab structure)
+            const parsed = JSON.parse(val); 
+            if (typeof parsed === 'object' && parsed !== null) return parsed;
+        } catch(e) { 
+            // If it fails, it's just a normal comma-separated string! Leave it alone.
+            return val; 
+        }
+    }
+    return val || '';
+};
+
+const isNewStructure = (arr: any) => {
+    const parsed = getParsedExt(arr);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) && ('members' in parsed || 'ngos' in parsed || 'others' in parsed);
+};
+
+const isValidString = (v: any) => v && String(v).trim() !== 'null' && String(v).trim() !== '';
+
+const hasValidData = (arr: any) => {
+    let parsed = getParsedExt(arr);
     
-    // Check if any of the fields actually have text or items in them
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const m = Array.isArray(parsed.members) ? parsed.members.filter(isValidString).length > 0 : false;
+        const n = Array.isArray(parsed.ngos) ? parsed.ngos.filter(isValidString).length > 0 : false;
+        const o = Array.isArray(parsed.others) ? parsed.others.filter(isValidString).length > 0 : false;
+        return m || n || o;
+    }
+    
+    if (!Array.isArray(parsed)) return Boolean(parsed);
+    return parsed.filter(isValidString).length > 0;
+};
+
+const displaySafeArray = (arr: any) => {
+    let parsed = getParsedExt(arr);
+    
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        let combined: string[] = [];
+        if (Array.isArray(parsed.members)) combined = combined.concat(parsed.members.filter(isValidString));
+        if (Array.isArray(parsed.ngos)) combined = combined.concat(parsed.ngos.filter(isValidString));
+        if (Array.isArray(parsed.others)) combined = combined.concat(parsed.others.filter(isValidString));
+        return combined.join(', ');
+    }
+    
+    if (!Array.isArray(parsed)) return parsed;
+    return parsed.filter(isValidString).join(', ');
+};
+
+const hasAuthorDetails = (item: any) => {
+    const details = item.author_details;
+    const external = item.external_institutions;
+    
+    if (!details && !external) return false;
+    
+    let hasCoAuthors = false;
+    if (details && details.co_authors) {
+        hasCoAuthors = Array.isArray(details.co_authors) 
+            ? details.co_authors.filter(isValidString).length > 0 
+            : Boolean(details.co_authors);
+    }
+        
     return Boolean(
-        details.primary_author || 
-        details.committee_chairmanship || 
-        details.co_authors || 
-        (Array.isArray(details.external_institutions) && details.external_institutions.length > 0)
+        (details && details.primary_author) || 
+        (details && details.introduced_by) ||
+        (details && details.committee_chairmanship) || 
+        hasCoAuthors || 
+        hasValidData(external)
     );
 };
 
@@ -115,7 +175,6 @@ const getCardClass = (isActive: boolean) => {
     return 'bg-white'; 
 };
 
-// --- DATA HELPERS ---
 const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
 
 const getLeadOffice = (depts: any[]) => {
@@ -123,11 +182,34 @@ const getLeadOffice = (depts: any[]) => {
     return lead ? lead.name : "City Mayor's Office";
 };
 
-const getSponsors = (depts: any[]) => {
-    const sponsors = depts?.filter(d => d.pivot.role === 'sponsor') || [];
-    if (sponsors.length === 0) return 'City Council';
-    if (sponsors.length === 1) return sponsors[0].name;
-    return `${sponsors[0].name} +${sponsors.length - 1}`;
+const getSupportOffices = (depts: any[]) => {
+    if (!depts) return [];
+    return depts.filter(d => d.pivot.role === 'support').map(d => d.name);
+};
+
+const getSponsors = (item: any) => {
+    if (!item.author_details) return 'City Council';
+    
+    const primary = item.author_details.primary_author || item.author_details.introduced_by || item.author_details.committee_chairmanship;
+    let coAuthorsCount = 0;
+    
+    if (item.author_details.co_authors) {
+        coAuthorsCount = Array.isArray(item.author_details.co_authors) 
+            ? item.author_details.co_authors.filter(isValidString).length
+            : 0;
+    }
+
+    if (!primary && coAuthorsCount === 0) return 'City Council';
+    if (primary && coAuthorsCount === 0) return primary;
+    if (primary && coAuthorsCount > 0) return `${primary} +${coAuthorsCount}`;
+    if (!primary && coAuthorsCount > 0) return `Multiple Authors (${coAuthorsCount})`;
+    
+    return 'City Council';
+};
+
+const getActiveIrrs = (irrs: any[]) => {
+    if (!Array.isArray(irrs)) return [];
+    return irrs.filter(irr => irr.is_active == true || irr.is_active == 1);
 };
 </script>
 
@@ -283,29 +365,29 @@ const getSponsors = (depts: any[]) => {
                                 </div>
                                 <div v-else class="flex items-center gap-1.5">
                                     <UserCheck class="w-4 h-4" />
-                                    {{ getSponsors(item.departments) }}
+                                    {{ getSponsors(item) }}
                                 </div>
                                 
-                                <div v-if="item.implementing_rules?.length > 0" class="flex items-center gap-1.5 text-blue-600 font-medium">
+                                <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="flex items-center gap-1.5 text-blue-600 font-medium">
                                     <Paperclip class="w-4 h-4" />
-                                    {{ item.implementing_rules.length }} IRR Attached
+                                    {{ getActiveIrrs(item.implementing_rules).length }} IRR Attached
                                 </div>
 
-                                <div v-if="item.implementing_rules?.length > 0" class="w-full mt-3 pl-4 border-l-2 border-blue-100">
-                                <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
-                                <div v-for="irr in item.implementing_rules" :key="irr.id" class="flex items-center justify-between group/irr py-1">
-                                    <div class="flex items-center gap-2">
-                                        <FileText class="w-3 h-3 text-blue-400" />
-                                        <span class="text-xs text-gray-600">
-                                            {{ irr.status }} 
-                                            <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
-                                        </span>
+                                <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="w-full mt-3 pl-4 border-l-2 border-blue-100">
+                                    <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
+                                    <div v-for="irr in getActiveIrrs(item.implementing_rules)" :key="irr.id" class="flex items-center justify-between group/irr py-1">
+                                        <div class="flex items-center gap-2">
+                                            <FileText class="w-3 h-3 text-blue-400" />
+                                            <span class="text-xs text-gray-600">
+                                                {{ irr.status }} 
+                                                <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
+                                            </span>
+                                        </div>
+                                        <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-colors">
+                                            <Download class="w-3 h-3" /> Download
+                                        </a>
                                     </div>
-                                    <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-colors">
-                                        <Download class="w-3 h-3" /> Download
-                                    </a>
                                 </div>
-                            </div>
                             </div>
 
                             <div class="flex flex-wrap gap-4 mt-5">
@@ -315,7 +397,7 @@ const getSponsors = (depts: any[]) => {
                                 </button>
                                 
                                 <button 
-                                    v-if="(activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none') || (activeTab === 'ordinance' && hasAuthorDetails(item.author_details))" 
+                                    v-if="(activeTab === 'eo' && item.committee_details && item.committee_details.type !== 'none') || (activeTab === 'ordinance' && hasAuthorDetails(item))" 
                                     @click="openCommitteeModal(item)" 
                                     class="text-xs font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors"
                                 >
@@ -369,12 +451,14 @@ const getSponsors = (depts: any[]) => {
                     <div class="bg-blue-600 px-6 py-4 flex items-center justify-between shrink-0">
                         <div>
                             <h3 class="text-white font-bold text-lg flex items-center gap-2">
-                                <Users class="w-5 h-5 text-blue-200" />
+                                <FileText class="w-5 h-5 text-blue-200" />
                                 <template v-if="activeTab === 'eo'">
-                                    {{ selectedCommittee.committee_details.type === 'council' ? 'Council & Committee Structure' : 'Program Implementation Details' }}
+                                    <span v-if="selectedCommittee.committee_details?.type === 'council'">Council & Committee Structure</span>
+                                    <span v-else-if="selectedCommittee.committee_details?.type === 'program'">Program Implementation Details</span>
+                                    <span v-else>Executive Order Details</span>
                                 </template>
                                 <template v-else>
-                                    Authors & Sponsorship Details
+                                    Ordinance & Authorship Details
                                 </template>
                             </h3>
                             <p class="text-blue-200 text-xs mt-0.5">
@@ -409,17 +493,17 @@ const getSponsors = (depts: any[]) => {
                                 </div>
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.internal_members">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="hasValidData(selectedCommittee.committee_details.council.internal_members)">
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Members</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.internal_members }}</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.council.internal_members) }}</p>
                                     </div>
                                     <div class="space-y-4">
-                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.external_members">
+                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="hasValidData(selectedCommittee.committee_details.council.external_members)">
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.external_members }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.council.external_members) }}</p>
                                         </div>
                                         
-                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.lead_secretariat || selectedCommittee.committee_details.council.secretariat_members">
+                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.council.lead_secretariat || hasValidData(selectedCommittee.committee_details.council.secretariat_members)">
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Secretariat</h4>
                                             
                                             <div v-if="selectedCommittee.committee_details.council.lead_secretariat" class="mb-3">
@@ -427,15 +511,15 @@ const getSponsors = (depts: any[]) => {
                                                 <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.committee_details.council.lead_secretariat }}</p>
                                             </div>
                                             
-                                            <div v-if="selectedCommittee.committee_details.council.secretariat_members">
+                                            <div v-if="hasValidData(selectedCommittee.committee_details.council.secretariat_members)">
                                                 <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Members</p>
-                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.secretariat_members }}</p>
+                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.council.secretariat_members) }}</p>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div v-if="selectedCommittee.committee_details.council.twg_head || selectedCommittee.committee_details.council.twg_internal_members" class="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                <div v-if="selectedCommittee.committee_details.council.twg_head || hasValidData(selectedCommittee.committee_details.council.twg_internal_members)" class="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
                                     <h4 class="text-xs font-bold text-blue-800 uppercase tracking-widest mb-4 border-b border-blue-100 pb-2">Technical Working Group (TWG)</h4>
                                     
                                     <div class="mb-4" v-if="selectedCommittee.committee_details.council.twg_head">
@@ -444,13 +528,13 @@ const getSponsors = (depts: any[]) => {
                                     </div>
                                     
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div v-if="selectedCommittee.committee_details.council.twg_internal_members">
+                                        <div v-if="hasValidData(selectedCommittee.committee_details.council.twg_internal_members)">
                                             <p class="text-xs text-blue-600 font-medium mb-1">TWG Internal Members</p>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_internal_members }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.council.twg_internal_members) }}</p>
                                         </div>
-                                        <div v-if="selectedCommittee.committee_details.council.twg_external_members">
+                                        <div v-if="hasValidData(selectedCommittee.committee_details.council.twg_external_members)">
                                             <p class="text-xs text-blue-600 font-medium mb-1">TWG External Members</p>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.council.twg_external_members }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.council.twg_external_members) }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -460,7 +544,7 @@ const getSponsors = (depts: any[]) => {
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
                                         <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
-                                        <p class="text-base font-bold text-blue-900">{{ getDeptName(selectedCommittee.committee_details.program.lead_office_id) }}</p>
+                                        <p class="text-base font-bold text-blue-900">{{ getLeadOffice(selectedCommittee.departments) }}</p>
                                     </div>
                                     <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Co-Lead Office</h4>
@@ -469,39 +553,88 @@ const getSponsors = (depts: any[]) => {
                                 </div>
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.internal_members">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="hasValidData(selectedCommittee.committee_details.program.internal_members)">
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.internal_members }}</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.program.internal_members) }}</p>
                                     </div>
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="selectedCommittee.committee_details.program.external_members">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="hasValidData(selectedCommittee.committee_details.program.external_members)">
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_details.program.external_members }}</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.committee_details.program.external_members) }}</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div v-else-if="activeTab === 'ordinance' && selectedCommittee.author_details" class="space-y-6">
+                        <div v-else-if="activeTab === 'ordinance' && (selectedCommittee.author_details || selectedCommittee.external_institutions)" class="space-y-6">
                             <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                                 <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Authorship & Sponsorship Details</h4>
                                 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
-                                    <div v-if="selectedCommittee.author_details.primary_author">
-                                        <p class="text-xs text-blue-600 font-bold mb-1">Primary Sponsor / Author</p>
-                                        <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.author_details.primary_author }}</p>
+                                    <div v-if="selectedCommittee.author_details?.primary_author || selectedCommittee.author_details?.introduced_by">
+                                        <p class="text-xs text-blue-600 font-bold mb-1">
+                                            {{ selectedCommittee.author_details.is_primary_author ? 'Primary Sponsor / Author' : 'Introduced By' }}
+                                        </p>
+                                        <p class="text-sm font-bold text-gray-900">
+                                            {{ selectedCommittee.author_details.primary_author || selectedCommittee.author_details.introduced_by }}
+                                        </p>
                                     </div>
                                     
-                                    <div v-if="selectedCommittee.author_details.committee_chairmanship">
+                                    <div v-if="selectedCommittee.author_details?.committee_chairmanship">
                                         <p class="text-xs text-blue-600 font-bold mb-1">Committee Chairmanship(s)</p>
                                         <p class="text-sm font-bold text-gray-900 whitespace-pre-wrap">{{ selectedCommittee.author_details.committee_chairmanship }}</p>
                                     </div>
                                 </div>
 
-                                <div v-if="selectedCommittee.author_details.co_authors" class="border-t border-gray-100 pt-4">
+                                <div v-if="hasValidData(selectedCommittee.author_details?.co_authors)" class="border-t border-gray-100 pt-4">
                                     <p class="text-xs text-gray-500 font-bold mb-2">Co-Authors / Committee Members</p>
-                                    <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.author_details.co_authors }}</p>
+                                    <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.author_details.co_authors) }}</p>
+                                </div>
+
+                                <div v-if="hasValidData(selectedCommittee.external_institutions)" class="border-t border-gray-100 pt-4 mt-4">
+                                    
+                                    <template v-if="isNewStructure(selectedCommittee.external_institutions)">
+                                        <div class="space-y-3">
+                                            <div v-if="hasValidData(getParsedExt(selectedCommittee.external_institutions).members)">
+                                                <p class="text-xs text-gray-500 font-bold mb-1">External Members</p>
+                                                <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(getParsedExt(selectedCommittee.external_institutions).members) }}</p>
+                                            </div>
+                                            <div v-if="hasValidData(getParsedExt(selectedCommittee.external_institutions).ngos)">
+                                                <p class="text-xs text-gray-500 font-bold mb-1">NGO's</p>
+                                                <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(getParsedExt(selectedCommittee.external_institutions).ngos) }}</p>
+                                            </div>
+                                            <div v-if="hasValidData(getParsedExt(selectedCommittee.external_institutions).others)">
+                                                <p class="text-xs text-gray-500 font-bold mb-1">Other Organizations</p>
+                                                <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(getParsedExt(selectedCommittee.external_institutions).others) }}</p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    
+                                    <template v-else>
+                                        <p class="text-xs text-gray-500 font-bold mb-2">External Institutions</p>
+                                        <p class="text-sm font-medium text-gray-800 whitespace-pre-wrap leading-relaxed">{{ displaySafeArray(selectedCommittee.external_institutions) }}</p>
+                                    </template>
+                                    
                                 </div>
                             </div>
+                            
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mt-6 mb-2 mx-1">
+                                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Implementing Offices</h4>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <p class="text-xs text-blue-600 font-bold mb-1">Lead Office</p>
+                                        <p class="text-sm font-bold text-gray-900">{{ getLeadOffice(selectedCommittee.departments) }}</p>
+                                    </div>
+                                    
+                                    <div v-if="getSupportOffices(selectedCommittee.departments).length > 0">
+                                        <p class="text-xs text-blue-600 font-bold mb-1">Supporting Offices</p>
+                                        <ul class="text-sm text-gray-700 list-disc list-inside space-y-1">
+                                            <li v-for="dept in getSupportOffices(selectedCommittee.departments)" :key="dept">{{ dept }}</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
 
                     </div>

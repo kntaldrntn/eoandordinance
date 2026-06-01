@@ -93,12 +93,12 @@ const platformItems = computed(() => {
 // --- SETTINGS LINKS ---
 const settingsItems = computed(() => {
     const menuConfig = [
-        {
-            title: 'Employee Management',
-            href: route('employees.index'),
-            icon: Users,
-            roles: ['system_admin']
-        },
+        // {
+        //     title: 'Employee Management',
+        //     href: route('employees.index'),
+        //     icon: Users,
+        //     roles: ['system_admin']
+        // },
         {
             title: 'External Directory',
             href: route('external-members.index'),

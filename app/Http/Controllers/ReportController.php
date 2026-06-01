@@ -7,7 +7,7 @@ use App\Models\Ordinance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Barryvdh\DomPDF\Facade\Pdf; // Ensure you have dompdf installed!
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class ReportController extends Controller
 {
@@ -16,7 +16,7 @@ class ReportController extends Controller
         return Inertia::render('reports/Index', [
             'records' => ['data' => $this->getReportData($request), 'total' => count($this->getReportData($request))],
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
-            'filters' => $request->only(['type', 'status_id', 'date_from', 'date_to', 'search']),
+            'filters' => $request->only(['type', 'status_id', 'date_from', 'date_to', 'search', 'has_irr', 'structure_type']), // 🚀 Added structure_type
         ]);
     }
 
@@ -24,7 +24,6 @@ class ReportController extends Controller
     {
         $records = $this->getReportData($request);
         
-        // 1. We add setOption(['isPhpEnabled' => true]) to allow the footer script to run!
         $pdf = Pdf::setOption(['isPhpEnabled' => true])
             ->loadView('reports.pdf', [
                 'records' => $records,
@@ -32,7 +31,6 @@ class ReportController extends Controller
                 'name' => auth()->user()->name ?? 'System Admin'
             ])->setPaper('a4', 'landscape');
 
-        // Stream opens it in the browser so they can view before printing
         return $pdf->stream('Legislative_Report_' . date('Y-m-d') . '.pdf');
     }
 
@@ -43,7 +41,8 @@ class ReportController extends Controller
         $statusId = $request->input('status_id');
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
-        $hasIrr = $request->input('has_irr'); // <--- 1. Capture the new filter
+        $hasIrr = $request->input('has_irr'); 
+        $structureType = $request->input('structure_type'); // 🚀 Capture new filter
 
         $results = collect();
 
@@ -55,11 +54,24 @@ class ReportController extends Controller
             if ($dateFrom) $eoQuery->whereDate('date_issued', '>=', $dateFrom);
             if ($dateTo) $eoQuery->whereDate('date_issued', '<=', $dateTo);
             
-            // <--- 2. ADD THIS IRR FILTER CHECK --->
             if ($hasIrr === 'yes') {
                 $eoQuery->has('implementingRules');
             } elseif ($hasIrr === 'no') {
                 $eoQuery->doesntHave('implementingRules');
+            }
+
+            // 🚀 NEW: Structure Type Filter Logic
+            if ($structureType) {
+                if ($structureType === 'none') {
+                    // Standard EO could be saved as 'none' or missing from older records
+                    $eoQuery->where(function($q) {
+                        $q->whereNull('committee_details')
+                          ->orWhere('committee_details->type', 'none');
+                    });
+                } else {
+                    // Query the specific JSON attribute directly
+                    $eoQuery->where('committee_details->type', $structureType);
+                }
             }
             
             if ($search) {
@@ -99,7 +111,6 @@ class ReportController extends Controller
             if ($dateFrom) $ordQuery->whereDate('date_enacted', '>=', $dateFrom);
             if ($dateTo) $ordQuery->whereDate('date_enacted', '<=', $dateTo);
             
-            // <--- 3. ADD THIS IRR FILTER CHECK --->
             if ($hasIrr === 'yes') {
                 $ordQuery->has('implementingRules');
             } elseif ($hasIrr === 'no') {

@@ -69,7 +69,10 @@ class OrdinanceController extends Controller
             'ordinances' => $query->orderBy('date_enacted', 'desc')->paginate(10)->withQueryString(),
             'departments' => Department::orderBy('name')->get(),
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
-            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title')->orderBy('ordinance_number', 'desc')->get(),
+            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title', 'is_active', 'effectivity_date')
+            ->where('is_active', true)
+            ->orderBy('ordinance_number', 'desc')
+            ->get(),
             'peopleRegistry' => $peopleRegistry,
             'filters' => $request->only(['search', 'year', 'is_active']),
             'available_years' => $years,
@@ -103,10 +106,16 @@ class OrdinanceController extends Controller
             'remarks' => 'nullable|string',
             
             'author_details' => 'nullable|array', 
+            
+            // Validate nested tabs
             'external_institutions' => 'nullable|array', 
+            'external_institutions.members' => 'nullable|array',
+            'external_institutions.ngos' => 'nullable|array',
+            'external_institutions.others' => 'nullable|array',
+            
             'lead_office_id' => 'nullable|exists:departments,id',
             'support_office_ids' => 'nullable|array',
-            'is_active' => 'boolean', 
+            // 'is_active' validation removed
         ]);
 
         DB::transaction(function () use ($request, $validated) {
@@ -132,16 +141,20 @@ class OrdinanceController extends Controller
                 }
             }
 
-            $authorData = $validated['author_details'] ?? [];
-            $authorData['external_institutions'] = $validated['external_institutions'] ?? [];
-
             $path = $request->hasFile('file') ? $request->file('file')->store('ordinances', 'public') : null;
+
+            // 🚀 Determine active status automatically based on the selected Status
+            $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
+            $isActive = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Repeal', 'Superseded', 'Supersede']);
 
             $ordinance = Ordinance::create([
                 'ordinance_number' => $validated['ordinance_number'],
                 'title' => $validated['title'],
                 'subject_matter' => $validated['subject_matter'] ?? null, 
-                'author_details' => $authorData, 
+                
+                'author_details' => $validated['author_details'] ?? [], 
+                'external_institutions' => $validated['external_institutions'] ?? ['members'=>[], 'ngos'=>[], 'others'=>[]], 
+                
                 'date_enacted' => $validated['date_enacted'],
                 'date_approved' => $validated['date_approved'],
                 'effectivity_date' => $validated['effectivity_date'],
@@ -149,7 +162,7 @@ class OrdinanceController extends Controller
                 'attested_by' => $validated['attested_by'] ?? null,
                 'approved_by' => $validated['approved_by'] ?? null,     
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'] ?? true,
+                'is_active' => $isActive, // 🚀 Saved automatically
                 'file_path' => $path,
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
@@ -195,10 +208,16 @@ class OrdinanceController extends Controller
             'remarks' => 'nullable|string',
             
             'author_details' => 'nullable|array', 
+            
+            // Validate nested tabs
             'external_institutions' => 'nullable|array', 
+            'external_institutions.members' => 'nullable|array',
+            'external_institutions.ngos' => 'nullable|array',
+            'external_institutions.others' => 'nullable|array',
+            
             'lead_office_id' => 'nullable|exists:departments,id',
             'support_office_ids' => 'nullable|array',
-            'is_active' => 'boolean', 
+            // 'is_active' validation removed
         ]);
 
         DB::transaction(function () use ($request, $validated, $ordinance) {
@@ -218,7 +237,10 @@ class OrdinanceController extends Controller
                         } elseif ($action === 'Full Amendment') {
                             $parent->update(['status_id' => $amendedStatusId, 'is_active' => false]);
                         } elseif ($action === 'Repeals') {
-                            $statusId = DB::table('statuses')->where('name', 'Repealed')->value('id') ?? 1;
+                            
+                            // 🚀 FIX: Match the exact spelling in your database
+                            $statusId = DB::table('statuses')->where('name', 'Repeal')->value('id') ?? 1;
+                            
                             $parent->update(['status_id' => $statusId, 'is_active' => false]);
                         } elseif ($action === 'Supersedes') {
                             $statusId = DB::table('statuses')->where('name', 'Supersede')->value('id') ?? 1;
@@ -235,14 +257,18 @@ class OrdinanceController extends Controller
                 $ordinance->file_path = $request->file('file')->store('ordinances', 'public');
             }
 
-            $authorData = $validated['author_details'] ?? [];
-            $authorData['external_institutions'] = $validated['external_institutions'] ?? [];
+            // 🚀 Determine active status automatically based on the selected Status
+            $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
+            $isActive = !in_array($statusName, ['Suspended','Amended', 'Repealed', 'Repeal', 'Superseded', 'Supersede']);
 
             $ordinance->update([
                 'ordinance_number' => $validated['ordinance_number'],
                 'title' => $validated['title'],
                 'subject_matter' => $validated['subject_matter'] ?? null, 
-                'author_details' => $authorData, 
+                
+                'author_details' => $validated['author_details'] ?? [], 
+                'external_institutions' => $validated['external_institutions'] ?? ['members'=>[], 'ngos'=>[], 'others'=>[]], 
+                
                 'date_enacted' => $validated['date_enacted'],
                 'date_approved' => $validated['date_approved'],
                 'effectivity_date' => $validated['effectivity_date'],
@@ -250,7 +276,7 @@ class OrdinanceController extends Controller
                 'attested_by' => $validated['attested_by'] ?? null,
                 'approved_by' => $validated['approved_by'] ?? null,
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'], 
+                'is_active' => $isActive, // 🚀 Saved automatically
                 'amends_ordinance_id' => $validated['amends_ordinance_id'] ?? null,
                 'relationship_type' => $validated['relationship_type'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
@@ -279,7 +305,11 @@ class OrdinanceController extends Controller
         $request->validate([
             'status' => 'required|string',
             'lead_office_id' => 'required|exists:departments,id',
-            'support_offices' => 'nullable|array', 
+            'support_offices' => 'nullable|array',
+            'external_institutions' => 'nullable|array', 
+            'external_institutions.members' => 'nullable|array',
+            'external_institutions.ngos' => 'nullable|array',
+            'external_institutions.others' => 'nullable|array',
             'file' => 'required|file|mimes:pdf|max:20480',
         ]);
 
@@ -289,6 +319,10 @@ class OrdinanceController extends Controller
             'ordinance_id' => $ordinance->id,
             'lead_office_id' => $request->lead_office_id,
             'support_offices' => json_encode($request->support_offices ?? []), 
+            
+            // 🚀 Properly saves the nested object
+            'external_institutions' => json_encode($request->external_institutions ?? ['members'=>[], 'ngos'=>[], 'others'=>[]]), 
+            
             'status' => $request->status,
             'is_active' => true,
             'file_path' => $path,
@@ -296,7 +330,7 @@ class OrdinanceController extends Controller
             'updated_at' => now(),
         ]);
 
-        return redirect()->back()->with('success', 'Implementing Rules (IRR) uploaded and linked successfully.');
+        return redirect()->back()->with('success', 'IRR added successfully.');
     }
 
     public function disableIrr(Request $request, $id)

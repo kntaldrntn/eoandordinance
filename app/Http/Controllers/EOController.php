@@ -30,7 +30,6 @@ class EOController extends Controller
             'implementingRules.leadOffice', 
             'amendments', 
             'audits.user'
-            // NOTE: You might also want to add 'classification' here if you set up the Eloquent relationship in the ExecutiveOrder model!
         ]);
 
         if ($request->filled('search')) {
@@ -66,8 +65,11 @@ class EOController extends Controller
             'departments' => Department::orderBy('name')->get(),
             'peopleRegistry' => $peopleRegistry, 
             'statuses' => DB::table('statuses')->orderBy('id')->get(),
-            'classifications' => DB::table('classifications')->orderBy('name')->get(), // Added dynamic classifications
-            'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title')->orderBy('eo_number', 'desc')->get(),
+            'classifications' => DB::table('classifications')->orderBy('name')->get(), 
+            'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title', 'is_active', 'effectivity_date')
+            ->where('is_active', true)
+            ->orderBy('eo_number', 'desc')
+            ->get(),
             'filters' => $request->only(['search']),
             'flash' => [
                 'success' => session('success'),
@@ -82,20 +84,21 @@ class EOController extends Controller
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number',
             'title' => 'required|string|max:1000',
-            'classification_id' => 'nullable|exists:classifications,id', // Updated validation
+            'classification_id' => 'nullable|exists:classifications,id', 
             'date_issued' => 'required|date',
             'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
             'legal_basis' => 'nullable|string',
             'lead_office_id' => 'nullable|exists:departments,id',
             'status_id' => 'required|exists:statuses,id',
             'file' => 'nullable|file|mimes:pdf|max:20480',
-            'is_active' => 'boolean', 
+            // 'is_active' validation removed
             'committee_details' => 'nullable|array', 
             'declaration' => 'nullable|string', 
         ]);
 
         DB::transaction(function () use ($request, $validated) {
             
+            // Handle Parent EO if this is an amendment
             if (!empty($validated['amends_eo_id'])) {
                 $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
@@ -104,25 +107,29 @@ class EOController extends Controller
                 if ($oldEO) {
                     $oldEO->update([
                         'status_id' => $amendedStatusId, 
-                        'is_active' => false 
+                        'is_active' => false // Old EO becomes inactive
                     ]);
                 }
             }
 
             $path = $request->hasFile('file') ? $request->file('file')->store('eos', 'public') : null;
 
+            // 🚀 Determine active status automatically based on the selected Status
+            $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
+            $isActive = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
+
             $eo = ExecutiveOrder::create([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
-                'classification_id' => $validated['classification_id'] ?? null, // Save relational ID
+                'classification_id' => $validated['classification_id'] ?? null, 
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'issuing_authority' => 'City Mayor',
                 'status_id' => $validated['status_id'], 
-                'is_active' => $validated['is_active'] ?? true, 
+                'is_active' => $isActive, // 🚀 Saved automatically
                 'committee_details' => $validated['committee_details'] ?? null,
                 'declaration' => $validated['declaration'] ?? null,
                 'file_path' => $path,
@@ -142,20 +149,21 @@ class EOController extends Controller
             'amends_eo_id' => 'nullable|exists:executive_orders,id',
             'eo_number' => 'required|string|unique:executive_orders,eo_number,' . $eo->id, 
             'title' => 'required|string|max:1000',
-            'classification_id' => 'nullable|exists:classifications,id', // Updated validation
+            'classification_id' => 'nullable|exists:classifications,id', 
             'date_issued' => 'required|date',
             'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
             'legal_basis' => 'nullable|string',
             'lead_office_id' => 'nullable|exists:departments,id',
             'status_id' => 'required|exists:statuses,id',
             'file' => 'nullable|file|mimes:pdf|max:20480',
-            'is_active' => 'boolean',
+            // 'is_active' validation removed
             'committee_details' => 'nullable|array', 
             'declaration' => 'nullable|string', 
         ]);
 
         DB::transaction(function () use ($request, $validated, $eo) {
             
+            // Handle Parent EO logic
             if (!empty($validated['amends_eo_id']) && $eo->amends_eo_id != $validated['amends_eo_id']) {
                 $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
@@ -173,17 +181,21 @@ class EOController extends Controller
                 $eo->file_path = $request->file('file')->store('eos', 'public');
             }
 
+            // 🚀 Determine active status automatically based on the selected Status
+            $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
+            $isActive = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
+
             $eo->update([
                 'amends_eo_id' => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
                 'eo_number' => $validated['eo_number'],
                 'title' => $validated['title'],
-                'classification_id' => $validated['classification_id'] ?? null, // Update relational ID
+                'classification_id' => $validated['classification_id'] ?? null, 
                 'date_issued' => $validated['date_issued'],
                 'effectivity_date' => $validated['effectivity_date'],
                 'legal_basis' => $validated['legal_basis'],
                 'status_id' => $validated['status_id'],
-                'is_active' => $validated['is_active'], 
+                'is_active' => $isActive,  // 🚀 Saved automatically
                 'committee_details' => $validated['committee_details'] ?? null, 
                 'declaration' => $validated['declaration'] ?? null,
             ]);
