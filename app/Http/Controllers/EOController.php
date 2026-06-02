@@ -32,12 +32,23 @@ class EOController extends Controller
             'audits.user'
         ]);
 
+        // 1. TEXT SEARCH
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('eo_number', 'LIKE', "%{$search}%")
                   ->orWhere('title', 'LIKE', "%{$search}%");
             });
+        }
+
+        // 2. YEAR FILTER
+        if ($request->filled('year') && $request->year !== 'all') {
+            $query->whereYear('date_issued', $request->year);
+        }
+
+        // 3. STATUS FILTER
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
+            $query->where('is_active', $request->is_active === 'active');
         }
 
         $eos = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
@@ -60,17 +71,23 @@ class EOController extends Controller
 
         $peopleRegistry = $employees->concat($externals)->sortBy('name')->values()->toArray();
 
+        // 🚀 Grab all available years for the dropdown
+        $years = ExecutiveOrder::selectRaw('YEAR(date_issued) as year')
+            ->whereNotNull('date_issued')
+            ->distinct()
+            ->orderBy('year', 'desc')
+            ->pluck('year')
+            ->toArray();
+
         return Inertia::render('eo/Index', [
             'eos' => $eos,
             'departments' => Department::orderBy('name')->get(),
             'peopleRegistry' => $peopleRegistry, 
             'statuses' => DB::table('statuses')->orderBy('id')->get(),
             'classifications' => DB::table('classifications')->orderBy('name')->get(), 
-            'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title', 'is_active', 'effectivity_date')
-            ->where('is_active', true)
-            ->orderBy('eo_number', 'desc')
-            ->get(),
-            'filters' => $request->only(['search']),
+            'existing_eos' => ExecutiveOrder::select('id', 'eo_number', 'title', 'is_active', 'effectivity_date')->orderBy('eo_number', 'desc')->get(),
+            'filters' => $request->only(['search', 'year', 'is_active']), // 🚀 Updated to pass filter states back to Vue
+            'available_years' => $years, // 🚀 Passed to Vue
             'flash' => [
                 'success' => session('success'),
                 'error' => session('error')     

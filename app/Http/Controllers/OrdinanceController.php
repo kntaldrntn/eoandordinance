@@ -69,10 +69,7 @@ class OrdinanceController extends Controller
             'ordinances' => $query->orderBy('date_enacted', 'desc')->paginate(10)->withQueryString(),
             'departments' => Department::orderBy('name')->get(),
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
-            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title', 'is_active', 'effectivity_date')
-            ->where('is_active', true)
-            ->orderBy('ordinance_number', 'desc')
-            ->get(),
+            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title', 'is_active', 'effectivity_date')->orderBy('ordinance_number', 'desc')->get(),
             'peopleRegistry' => $peopleRegistry,
             'filters' => $request->only(['search', 'year', 'is_active']),
             'available_years' => $years,

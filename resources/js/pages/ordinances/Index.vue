@@ -66,8 +66,10 @@ const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
 
 const filteredParents = computed(() => {
-    // Note: Use props.existing_ordinances for the Ordinance file
     let list = props.existing_ordinances || []; 
+    
+    // 🚀 THE FIX: Only let users search for Active documents
+    list = list.filter(item => item.is_active);
     
     // 1. Don't let a document amend itself
     if (isEdit.value && editingId.value) {
@@ -78,7 +80,7 @@ const filteredParents = computed(() => {
     if (form.effectivity_date) {
         const newDocDate = new Date(form.effectivity_date).getTime();
         list = list.filter(item => {
-            if (!item.effectivity_date) return true; // Keep if parent has no date
+            if (!item.effectivity_date) return true; 
             return new Date(item.effectivity_date).getTime() <= newDocDate;
         });
     }
@@ -87,7 +89,6 @@ const filteredParents = computed(() => {
     if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
         list = list.filter(item => {
-            // Adjust to item.ordinance_number for the Ordinance file
             const trackingNo = item.ordinance_number ? item.ordinance_number.toLowerCase() : ''; 
             const title = item.title ? item.title.toLowerCase() : '';
             return trackingNo.includes(q) || title.includes(q);
@@ -260,17 +261,21 @@ const getSuggestions = (query: string, fieldName: string | null = null, idx: num
         list = list.filter(p => !globallySelectedNames.includes(normalize(p.name || '')));
     }
 
-   
     if (!query || query.trim() === '') {
         return []; 
     }
     
-    const q = query.toLowerCase().trim();   
-    if (q.length < 2) {
+    const parts = query.split(/[\n,]+/).map(s => s.trim());
+    const currentSearch = parts[parts.length - 1].toLowerCase();
+    
+    if (!currentSearch || currentSearch.length < 2) {
         return [];
     }
 
-    return list.filter(p => (p.name && p.name.toLowerCase().includes(q))).slice(0, 10);
+    return list.filter(p => {
+        const safeName = p.name ? String(p.name).toLowerCase() : '';
+        return safeName.includes(currentSearch);
+    }).slice(0, 10);
 };
 
 const selectPerson = (field: string, name: string, index?: number) => {
@@ -577,7 +582,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
             <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm xl:flex-row flex-wrap">
                 <div class="relative w-full md:max-w-md xl:flex-1">
                     <Search class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-gray-400" />
-                    <input v-model="searchTerm" type="text" placeholder="Search Ord. No. or Title..." class="block w-full rounded-lg border border-gray-300 bg-gray-50 hover:bg-white focus:bg-white py-2 pr-10 pl-10 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" />
+                    <input v-model="searchTerm" type="text" placeholder="Search Ord. No. or Title..." class="block w-full rounded-lg border border-gray-300 bg-gray-50 hover:bg-white focus:bg-white py-2 pr-10 pl-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                     <button v-if="searchTerm || filterYear !== 'all' || filterActive !== 'all'" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors" title="Clear Filters">×</button>
                 </div>
                 
@@ -595,7 +600,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         </select>
                     </div>
 
-                    <button v-if="$page.props.auth.user.role !== 'user'" class="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-indigo-700 transition shrink-0" @click="openAddDialog">
+                    <button v-if="$page.props.auth.user.role !== 'user'" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 transition shrink-0" @click="openAddDialog">
                         <Plus class="h-4 w-4" /> Encode Ordinance
                     </button>
                 </div>
@@ -621,11 +626,11 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     
                                     <td class="px-6 py-4 align-top">
                                         <div class="flex flex-col gap-1">
-                                            <span class="font-mono font-bold text-indigo-600 text-base">{{ ord.ordinance_number }}</span>
+                                            <span class="font-mono font-bold text-blue-600 text-base">{{ ord.ordinance_number }}</span>
                                             <div class="text-[10px] text-gray-500 mt-1 flex flex-col gap-0.5 font-bold tracking-wide uppercase">
                                                 <span>App: {{ formatDate(ord.date_approved) }}</span>
                                                 <span>Eff: {{ formatDate(ord.effectivity_date) }}</span>
-                                                <span class="text-indigo-500">Imp: {{ formatDate(ord.date_enacted) }}</span>
+                                                <span class="text-blue-500">Imp: {{ formatDate(ord.date_enacted) }}</span>
                                             </div>
                                             <div v-if="!ord.is_active" class="mt-1 inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded bg-red-100 text-red-600 text-[10px] font-bold uppercase border border-red-200">
                                                 <XCircle class="w-3 h-3" /> Inactive
@@ -658,21 +663,21 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     <td class="px-6 py-4 align-top text-center">
                                         <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600 uppercase border border-gray-200 mb-2">{{ ord.status?.name }}</span>
                                         <div v-if="ord.implementing_rules?.length > 0" class="flex flex-col gap-1 items-center">
-                                            <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{{ ord.implementing_rules.length }} IRRs Attached</span>
+                                            <span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{{ ord.implementing_rules.length }} IRRs Attached</span>
                                         </div>
                                     </td>
                                     
                                     <td class="px-6 py-4 text-center align-middle">
                                         <div class="flex flex-col items-center justify-center gap-2">
                                             <div class="flex items-center gap-2">
-                                                <a v-if="ord.file_url" :href="ord.file_url" target="_blank" class="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="View PDF">
+                                                <a v-if="ord.file_url" :href="ord.file_url" target="_blank" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View PDF">
                                                     <Eye class="w-4 h-4" />
                                                 </a>
-                                                <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(ord)" class="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Edit">
+                                                <button v-if="$page.props.auth.user.role !== 'user'" @click="openEditDialog(ord)" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
                                                     <Pencil class="w-4 h-4" />
                                                 </button>
                                             </div>
-                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openIrrDialog(ord)" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-2 py-1 rounded transition w-full flex items-center justify-center gap-1">
+                                            <button v-if="$page.props.auth.user.role !== 'user'" @click="openIrrDialog(ord)" class="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2 py-1 rounded transition w-full flex items-center justify-center gap-1">
                                                 <BookOpen class="w-3 h-3" /> Manage IRR
                                             </button>
                                         </div>
@@ -686,7 +691,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                 </div>
                  <div v-if="ordinances.last_page > 1" class="flex items-center justify-between border-t bg-gray-50 px-6 py-3">
                     <p class="text-sm text-gray-600">Showing <span class="font-medium">{{ ordinances.from }}</span>–<span class="font-medium">{{ ordinances.to }}</span> of <span class="font-medium">{{ ordinances.total }}</span></p>
-                    <div class="flex gap-1"><button v-for="(link, index) in ordinances.links.slice(1, -1)" :key="index" @click="goToPage(String(link.url))" :disabled="!link.url" class="rounded-md px-3 py-1 text-sm transition" :class="[link.active ? 'bg-indigo-600 font-medium text-white shadow' : 'border bg-white text-gray-600 hover:bg-gray-100']"><span v-html="link.label"></span></button></div>
+                    <div class="flex gap-1"><button v-for="(link, index) in ordinances.links.slice(1, -1)" :key="index" @click="goToPage(String(link.url))" :disabled="!link.url" class="rounded-md px-3 py-1 text-sm transition" :class="[link.active ? 'bg-blue-600 font-medium text-white shadow' : 'border bg-white text-gray-600 hover:bg-gray-100']"><span v-html="link.label"></span></button></div>
                 </div>
             </div>
 
@@ -696,11 +701,11 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         
                         <div class="flex items-center justify-between mb-6 border-b pb-4">
                             <div>
-                                <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-indigo-600" /> {{ isEdit ? 'Edit Ordinance' : 'Encode Ordinance' }}</h2>
+                                <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-blue-600" /> {{ isEdit ? 'Edit Ordinance' : 'Encode Ordinance' }}</h2>
                                 <p class="text-xs text-gray-500 mt-1">{{ isEdit ? 'Update details.' : 'Create a new continuous record.' }}</p>
                             </div>
                             <div class="flex items-center gap-4">
-                                <button v-if="isEdit" @click="activeModalTab = activeModalTab === 'history' ? 'details' : 'history'" class="text-xs font-bold text-indigo-600 hover:underline">
+                                <button v-if="isEdit" @click="activeModalTab = activeModalTab === 'history' ? 'details' : 'history'" class="text-xs font-bold text-blue-600 hover:underline">
                                     {{ activeModalTab === 'history' ? 'Back to Edit' : 'View Audit History' }}
                                 </button>
                                 <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
@@ -710,9 +715,9 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         <div v-if="activeModalTab === 'history'" class="py-4">
                             <div v-if="selectedRecord?.audits?.length > 0" class="space-y-6 relative border-l-2 border-gray-100 ml-4 pl-6">
                                 <div v-for="audit in selectedRecord.audits" :key="audit.id" class="relative">
-                                    <div class="absolute -left-[33px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white" :class="audit.action === 'Created' ? 'bg-green-500' : 'bg-indigo-500'"></div>
+                                    <div class="absolute -left-[33px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white" :class="audit.action === 'Created' ? 'bg-green-500' : 'bg-blue-500'"></div>
                                     <div class="flex flex-col gap-1">
-                                        <p class="text-sm font-bold text-gray-900">{{ audit.action }} by <span class="text-indigo-600">{{ audit.user?.name || 'Unknown' }}</span></p>
+                                        <p class="text-sm font-bold text-gray-900">{{ audit.action }} by <span class="text-blue-600">{{ audit.user?.name || 'Unknown' }}</span></p>
                                         <p class="text-xs text-gray-500">{{ getChangedFields(audit) }}</p>
                                         <span class="text-[10px] text-gray-400 font-mono">{{ formatAuditDate(audit.created_at) }}</span>
                                     </div>
@@ -727,16 +732,16 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         <form v-else @submit.prevent="submitForm" class="space-y-8">
                             
                             <div class="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-5 relative">
-                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest border border-indigo-100 rounded-full">1. Metadata & Status</div>
+                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">1. Metadata & Status</div>
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5 pt-2">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Ordinance Number <span class="text-red-500">*</span></label>
-                                        <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                        <input v-model="form.ordinance_number" type="text" placeholder="e.g., Ord. No. 2026-05" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Status <span class="text-red-500">*</span></label>
-                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500" required>
+                                        <select v-model="form.status_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required>
                                             <option value="" disabled>Select Status</option>
                                             <option v-for="status in selectableStatuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                                         </select>
@@ -746,11 +751,11 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 <div class="space-y-4 pt-2">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Subject Title <span class="text-red-500">*</span></label>
-                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Describe the ordinance..." required></textarea>
+                                        <textarea v-model="form.title" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Describe the ordinance..." required></textarea>
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Subject Matter</label>
-                                        <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Brief summary of the subject matter..."></textarea>
+                                        <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief summary of the subject matter..."></textarea>
                                     </div>
                                 </div>
 
@@ -802,45 +807,45 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </Transition>
                             </div>
 
-                            <div class="bg-indigo-50/30 p-5 rounded-xl border border-indigo-100/80 space-y-5">
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-indigo-100 pb-5">
+                            <div class="bg-blue-50/30 p-5 rounded-xl border border-blue-100/80 space-y-5">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-blue-100 pb-5">
                                     <div>
-                                        <label class="mb-1 block text-xs font-bold text-indigo-600 uppercase">Date of Approval <span class="text-red-500">*</span></label>
-                                        <input v-model="form.date_approved" type="date" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                        <label class="mb-1 block text-xs font-bold text-blue-600 uppercase">Date of Approval <span class="text-red-500">*</span></label>
+                                        <input v-model="form.date_approved" type="date" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required />
                                     </div>
                                     <div>
-                                        <label class="mb-1 block text-xs font-bold text-indigo-600 uppercase">Date of Effectivity <span class="text-red-500">*</span></label>
-                                        <input v-model="form.effectivity_date" :min="form.date_approved" type="date" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500" required />
-                                        <p class="text-[9px] text-indigo-500 mt-1 italic">Must be on or after Approval</p>
+                                        <label class="mb-1 block text-xs font-bold text-blue-600 uppercase">Date of Effectivity <span class="text-red-500">*</span></label>
+                                        <input v-model="form.effectivity_date" :min="form.date_approved" type="date" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required />
+                                        <p class="text-[9px] text-blue-500 mt-1 italic">Must be on or after Approval</p>
                                     </div>
                                     <div>
-                                        <label class="mb-1 block text-xs font-bold text-indigo-600 uppercase">Implementation (Enacted) <span class="text-red-500">*</span></label>
-                                        <input v-model="form.date_enacted" :min="form.effectivity_date" type="date" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500" required />
-                                        <p class="text-[9px] text-indigo-500 mt-1 italic">Must be on or after Effectivity</p>
+                                        <label class="mb-1 block text-xs font-bold text-blue-600 uppercase">Implementation (Enacted) <span class="text-red-500">*</span></label>
+                                        <input v-model="form.date_enacted" :min="form.effectivity_date" type="date" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" required />
+                                        <p class="text-[9px] text-blue-500 mt-1 italic">Must be on or after Effectivity</p>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Presiding Officer <span class="text-red-500">*</span></label>
-                                        <input v-model="form.presiding_officer" type="text" placeholder="e.g., City Vice Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                        <input v-model="form.presiding_officer" type="text" placeholder="e.g., City Vice Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Attested By</label>
-                                        <input v-model="form.attested_by" type="text" placeholder="e.g., SP Secretary" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" />
+                                        <input v-model="form.attested_by" type="text" placeholder="e.g., SP Secretary" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Approved By</label>
-                                        <input v-model="form.approved_by" type="text" placeholder="e.g., City Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" />
+                                        <input v-model="form.approved_by" type="text" placeholder="e.g., City Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
                                     </div>
                                 </div>
                             </div>
 
                             <div class="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-6 relative animate-in fade-in duration-300">
-                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest border border-indigo-100 rounded-full">2. Authorship & Sponsorship</div>
+                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">2. Authorship & Sponsorship</div>
                                 
                                 <div class="flex items-center gap-6 border-b border-gray-200 pt-2">
-                                    <button type="button" @click="activeAuthorTab = 'authors'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'authors' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Authorship</button>
-                                    <button type="button" @click="activeAuthorTab = 'committees'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'committees' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Sponsorship Committee</button>
+                                    <button type="button" @click="activeAuthorTab = 'authors'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'authors' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Authorship</button>
+                                    <button type="button" @click="activeAuthorTab = 'committees'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'committees' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Sponsorship Committee</button>
                                 </div>
 
                                 <div v-show="activeAuthorTab === 'authors'" class="animate-in fade-in duration-300">
@@ -848,7 +853,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                         
                                         <div>
                                             <div class="mb-1 w-fit">
-                                                <select v-model="form.author_details.is_primary_author" class="block text-xs font-bold text-indigo-800 uppercase tracking-widest bg-transparent border-0 px-0 py-0 pr-5 focus:ring-0 cursor-pointer hover:text-indigo-900 transition-colors">
+                                                <select v-model="form.author_details.is_primary_author" class="block text-xs font-bold text-blue-800 uppercase tracking-widest bg-transparent border-0 px-0 py-0 pr-5 focus:ring-0 cursor-pointer hover:text-blue-900 transition-colors">
                                                     <option :value="true">PRIMARY AUTHOR</option>
                                                     <option :value="false">INTRODUCED BY</option>
                                                 </select>
@@ -859,40 +864,40 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                     @focus.stop="activeSuggestion = 'introduced'"
                                                     @click.stop="activeSuggestion = 'introduced'"
                                                     @input="activeSuggestion = 'introduced'"
-                                                    type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type name..." />
+                                                    type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
                                                 
                                                 <div v-if="activeSuggestion === 'introduced' && getSuggestions(form.author_details.introduced_by, 'introduced_by').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.introduced_by, 'introduced_by')" :key="idx" @mousedown.prevent="selectPerson('introduced_by', person.name)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.introduced_by, 'introduced_by')" :key="idx" @mousedown.prevent="selectPerson('introduced_by', person.name)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                         <div class="text-sm font-bold text-gray-800">
                                                             {{ person.name }}
                                                             <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-indigo-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div>
-                                            <label class="mb-2 block text-xs font-bold text-indigo-800 uppercase">Co-Authors</label>
+                                            <label class="mb-2 block text-xs font-bold text-blue-800 uppercase">Co-Authors</label>
                                             <div class="space-y-2">
                                                 <div v-for="(member, index) in form.author_details.co_authors" :key="'ca_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
+                                                    <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                                     <div class="relative flex-1">
                                                         <input 
                                                             v-model="form.author_details.co_authors[index]" 
                                                             @focus.stop="activeSuggestion = 'co_author_' + index"
                                                             @click.stop="activeSuggestion = 'co_author_' + index"
                                                             @input="activeSuggestion = 'co_author_' + index"
-                                                            type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type name..." />
+                                                            type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
                                                         
                                                         <div v-if="activeSuggestion === 'co_author_' + index && getSuggestions(form.author_details.co_authors[index], 'co_authors', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.co_authors[index], 'co_authors', index)" :key="idx" @mousedown.prevent="selectPerson('co_authors', person.name, index)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.co_authors[index], 'co_authors', index)" :key="idx" @mousedown.prevent="selectPerson('co_authors', person.name, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                                 <div class="text-sm font-bold text-gray-800">
                                                                     {{ person.name }}
                                                                     <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
                                                                 </div>
-                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-indigo-600' : 'text-green-600'">{{ person.type }}</div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -901,7 +906,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                     </button>
                                                 </div>
                                             </div>
-                                            <button type="button" @click="addMember('co_authors')" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition ml-5">
+                                            <button type="button" @click="addMember('co_authors')" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
                                                 <Plus class="w-3.5 h-3.5" /> Add Row
                                             </button>
                                         </div>
@@ -913,47 +918,47 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
                                         
                                         <div>
-                                            <label class="mb-1 block text-xs font-bold text-indigo-800 uppercase">Sponsorship Committee</label>
+                                            <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Sponsorship Committee</label>
                                             <div class="relative w-full">
                                                 <input 
                                                     v-model="form.author_details.committee_chairmanship" 
                                                     @focus.stop="activeSuggestion = 'committee'"
                                                     @click.stop="activeSuggestion = 'committee'"
                                                     @input="activeSuggestion = 'committee'"
-                                                    type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="e.g. Committee on Tech..." />
+                                                    type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="e.g. Committee on Tech..." />
                                                 
                                                 <div v-if="activeSuggestion === 'committee' && getSuggestions(form.author_details.committee_chairmanship, 'committee').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.committee_chairmanship, 'committee')" :key="idx" @mousedown.prevent="selectPerson('committee', person.name)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.committee_chairmanship, 'committee')" :key="idx" @mousedown.prevent="selectPerson('committee', person.name)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                         <div class="text-sm font-bold text-gray-800">
                                                             {{ person.name }}
                                                             <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-indigo-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div>
-                                            <label class="mb-2 block text-xs font-bold text-indigo-800 uppercase">Committee Members</label>
+                                            <label class="mb-2 block text-xs font-bold text-blue-800 uppercase">Committee Members</label>
                                             <div class="space-y-2">
                                                 <div v-for="(member, index) in form.author_details.committee_members" :key="'cm_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
+                                                    <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                                     <div class="relative flex-1">
                                                         <input 
                                                             v-model="form.author_details.committee_members[index]" 
                                                             @focus.stop="activeSuggestion = 'committee_members_' + index"
                                                             @click.stop="activeSuggestion = 'committee_members_' + index"
                                                             @input="activeSuggestion = 'committee_members_' + index"
-                                                            type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type name..." />
+                                                            type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
                                                         
                                                         <div v-if="activeSuggestion === 'committee_members_' + index && getSuggestions(form.author_details.committee_members[index], 'committee_members', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.committee_members[index], 'committee_members', index)" :key="idx" @mousedown.prevent="selectPerson('committee_members', person.name, index)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.committee_members[index], 'committee_members', index)" :key="idx" @mousedown.prevent="selectPerson('committee_members', person.name, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                                 <div class="text-sm font-bold text-gray-800">
                                                                     {{ person.name }}
                                                                     <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
                                                                 </div>
-                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-indigo-600' : 'text-green-600'">{{ person.type }}</div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -962,7 +967,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                     </button>
                                                 </div>
                                             </div>
-                                            <button type="button" @click="addMember('committee_members')" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition ml-5">
+                                            <button type="button" @click="addMember('committee_members')" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
                                                 <Plus class="w-3.5 h-3.5" /> Add Row
                                             </button>
                                         </div>
@@ -971,20 +976,20 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </div>
                             </div>
 
-                            <div class="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 space-y-6 relative">
-                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest border border-indigo-100 rounded-full">3. Implementing Offices</div>
+                            <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-6 relative">
+                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">3. Implementing Offices</div>
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
                                     <div>
-                                        <label class="mb-1 block text-xs font-bold text-indigo-800 uppercase">Lead Implementing Office</label>
+                                        <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Lead Implementing Office</label>
                                         <div class="relative w-full">
                                             <input 
                                                 type="text" v-model="implementingSearchQuery"
                                                 @focus.stop="activeSuggestion = 'lead_office'" @click.stop="activeSuggestion = 'lead_office'"
                                                 @input="activeSuggestion = 'lead_office'; form.lead_office_id = ''"
-                                                class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
+                                                class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 pr-8 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." />
                                             <div v-if="activeSuggestion === 'lead_office' && getDeptSuggestions(implementingSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                <div v-for="dept in getDeptSuggestions(implementingSearchQuery)" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
+                                                <div v-for="dept in getDeptSuggestions(implementingSearchQuery)" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
                                                     {{ dept.name }}
                                                 </div>
                                             </div>
@@ -993,37 +998,37 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                                     <div>
                                         <div class="flex items-center justify-between mb-2">
-                                            <label class="text-xs font-bold text-indigo-800 uppercase">Supporting Offices</label>
-                                            <span class="text-[10px] font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full shadow-sm">{{ form.support_office_ids.length }} Selected</span>
+                                            <label class="text-xs font-bold text-blue-800 uppercase">Supporting Offices</label>
+                                            <span class="text-[10px] font-bold text-white bg-blue-500 px-2 py-0.5 rounded-full shadow-sm">{{ form.support_office_ids.length }} Selected</span>
                                         </div>
                                         <div class="relative mb-2">
                                             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                                            <input v-model="supportSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                                            <input v-model="supportSearchQuery" type="text" placeholder="Filter offices..." class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-blue-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                                         </div>
-                                        <div class="flex flex-col gap-1 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-indigo-100 custom-scrollbar">
-                                            <label v-for="dept in filteredSupportOffices" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 p-1.5 rounded transition">
-                                                <input type="checkbox" :value="dept.id" v-model="form.support_office_ids" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 border-gray-300" />
+                                        <div class="flex flex-col gap-1 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-blue-100 custom-scrollbar">
+                                            <label v-for="dept in filteredSupportOffices" :key="dept.id" class="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1.5 rounded transition">
+                                                <input type="checkbox" :value="dept.id" v-model="form.support_office_ids" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" />
                                                 <span class="text-xs text-gray-700 leading-tight">{{ dept.name }}</span>
                                             </label>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div class="border-t border-indigo-100 pt-5 mt-5">
-                                    <label class="mb-3 block text-xs font-bold text-indigo-800 uppercase">External Institutions / Partners</label>
+                                <div class="border-t border-blue-100 pt-5 mt-5">
+                                    <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">External Institutions / Partners</label>
                                     
                                     <div class="flex border-b border-gray-200 mb-4">
-                                        <button type="button" @click="activeOrdinanceExternalTab = 'members'" :class="activeOrdinanceExternalTab === 'members' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Members</button>
-                                        <button type="button" @click="activeOrdinanceExternalTab = 'ngos'" :class="activeOrdinanceExternalTab === 'ngos' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">NGO's</button>
-                                        <button type="button" @click="activeOrdinanceExternalTab = 'others'" :class="activeOrdinanceExternalTab === 'others' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Other Organizations</button>
+                                        <button type="button" @click="activeOrdinanceExternalTab = 'members'" :class="activeOrdinanceExternalTab === 'members' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Members</button>
+                                        <button type="button" @click="activeOrdinanceExternalTab = 'ngos'" :class="activeOrdinanceExternalTab === 'ngos' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">NGO's</button>
+                                        <button type="button" @click="activeOrdinanceExternalTab = 'others'" :class="activeOrdinanceExternalTab === 'others' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Other Organizations</button>
                                     </div>
 
                                     <div class="space-y-2">
                                         <div v-for="(name, index) in form.external_institutions[activeOrdinanceExternalTab]" :key="activeOrdinanceExternalTab + index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
+                                            <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                             <div class="relative flex-1">
                                                 <input v-model="form.external_institutions[activeOrdinanceExternalTab][index]" type="text" 
-                                                    class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Type name..." />
+                                                    class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type name..." />
                                             </div>
                                             <button type="button" @click="form.external_institutions[activeOrdinanceExternalTab].splice(index, 1)" 
                                                     class="text-red-300 hover:text-red-500 transition-colors" v-if="form.external_institutions[activeOrdinanceExternalTab].length > 1">
@@ -1031,7 +1036,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             </button>
                                         </div>
                                         <button type="button" @click="form.external_institutions[activeOrdinanceExternalTab].push('')" 
-                                                class="mt-2 text-[10px] font-bold uppercase text-indigo-600 hover:text-indigo-800 ml-5 transition-colors">
+                                                class="mt-2 text-[10px] font-bold uppercase text-blue-600 hover:text-blue-800 ml-5 transition-colors">
                                             + Add Row
                                         </button>
                                     </div>
@@ -1040,13 +1045,13 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                             <div class="pt-4 border-t pt-5">
                                 <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Document (PDF)</label>
-                                <input type="file" @change="(e) => form.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"/>
+                                <input type="file" @change="(e) => form.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
                                 <p class="mt-1 text-[10px] text-gray-400 italic">{{ isEdit ? 'Leave empty to keep existing PDF.' : 'Optional: Upload the signed PDF.' }}</p>
                             </div>
 
                             <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
                                 <button type="button" @click="showDialog = false" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors">Cancel</button>
-                                <button type="submit" :disabled="form.processing" class="flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-indigo-700 transition-colors disabled:opacity-70">
+                                <button type="submit" :disabled="form.processing" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-70">
                                     <CheckCircle2 v-if="!form.processing" class="w-4 h-4" /> {{ form.processing ? 'Saving...' : 'Save Record' }}
                                 </button>
                             </div>
@@ -1062,7 +1067,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         <div class="flex items-center justify-between mb-6 border-b pb-4">
                             <div>
                                 <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                    <Paperclip class="w-5 h-5 text-indigo-600" /> Upload IRR
+                                    <Paperclip class="w-5 h-5 text-blue-600" /> Upload IRR
                                 </h2>
                                 <p class="text-xs text-gray-500 mt-1">For Ordinance: {{ selectedRecord?.ordinance_number }}</p>
                             </div>
@@ -1071,41 +1076,41 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         
                         <form @submit.prevent="submitIrrForm" class="space-y-6">
                             
-                            <div class="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 space-y-5 relative">
-                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest border border-indigo-100 rounded-full">IRR Implementing Offices</div>
+                            <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-5 relative">
+                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">IRR Implementing Offices</div>
                                 
                                 <div class="pt-2">
-                                    <label class="mb-1 block text-xs font-bold text-indigo-800 uppercase">Lead Office <span class="text-red-500">*</span></label>
+                                    <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Lead Office <span class="text-red-500">*</span></label>
                                     <div class="relative w-full">
                                         <input 
                                             type="text" v-model="deptIrrSearchQuery"
                                             @focus.stop="activeSuggestion = 'irr_lead_office'" @click.stop="activeSuggestion = 'irr_lead_office'"
                                             @input="activeSuggestion = 'irr_lead_office'; irrForm.lead_office_id = ''"
-                                            class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." required />
+                                            class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." required />
                                         
                                         <div v-if="activeSuggestion === 'irr_lead_office' && getIrrLeadSuggestions(deptIrrSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                            <div v-for="dept in getIrrLeadSuggestions(deptIrrSearchQuery)" :key="dept.id" @mousedown.prevent="selectIrrLeadOffice(dept, irrForm)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
+                                            <div v-for="dept in getIrrLeadSuggestions(deptIrrSearchQuery)" :key="dept.id" @mousedown.prevent="selectIrrLeadOffice(dept, irrForm)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
                                                 {{ dept.name }}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="border-t border-indigo-100 pt-4">
-                                    <label class="mb-3 block text-xs font-bold text-indigo-800 uppercase">Supporting Offices</label>
+                                <div class="border-t border-blue-100 pt-4">
+                                    <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">Supporting Offices</label>
                                     <div class="space-y-2">
                                         <div v-for="(office, index) in irrForm.support_offices" :key="'irr_so_'+index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
+                                            <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                             <div class="relative flex-1">
                                                 <input 
                                                     v-model="irrForm.support_offices[index].name" 
                                                     @focus.stop="activeSuggestion = 'irr_support_office_' + index"
                                                     @click.stop="activeSuggestion = 'irr_support_office_' + index"
                                                     @input="activeSuggestion = 'irr_support_office_' + index; irrForm.support_offices[index].id = ''"
-                                                    type="text" class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search department..." />
+                                                    type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." />
                                                 
                                                 <div v-if="activeSuggestion === 'irr_support_office_' + index && getIrrDeptSuggestions(irrForm.support_offices[index].name, index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="dept in getIrrDeptSuggestions(irrForm.support_offices[index].name, index)" :key="dept.id" @mousedown.prevent="selectIrrSupportOffice(dept, index)" class="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm font-medium text-gray-800">
+                                                    <div v-for="dept in getIrrDeptSuggestions(irrForm.support_offices[index].name, index)" :key="dept.id" @mousedown.prevent="selectIrrSupportOffice(dept, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
                                                         {{ dept.name }}
                                                     </div>
                                                 </div>
@@ -1115,26 +1120,26 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             </button>
                                         </div>
                                     </div>
-                                    <button type="button" @click="addIrrSupportOffice()" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition ml-5">
+                                    <button type="button" @click="addIrrSupportOffice()" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
                                         <Plus class="w-3.5 h-3.5" /> Add Support Office
                                     </button>
                                 </div>
                                 
-                                <div class="border-t border-indigo-100 pt-4">
-                                    <label class="mb-3 block text-xs font-bold text-indigo-800 uppercase">External Institutions / Partners</label>
+                                <div class="border-t border-blue-100 pt-4">
+                                    <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">External Institutions / Partners</label>
                                     
                                     <div class="flex border-b border-gray-200 mb-4">
-                                        <button type="button" @click="activeIrrExternalTab = 'members'" :class="activeIrrExternalTab === 'members' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Members</button>
-                                        <button type="button" @click="activeIrrExternalTab = 'ngos'" :class="activeIrrExternalTab === 'ngos' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">NGO's</button>
-                                        <button type="button" @click="activeIrrExternalTab = 'others'" :class="activeIrrExternalTab === 'others' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Other Organizations</button>
+                                        <button type="button" @click="activeIrrExternalTab = 'members'" :class="activeIrrExternalTab === 'members' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Members</button>
+                                        <button type="button" @click="activeIrrExternalTab = 'ngos'" :class="activeIrrExternalTab === 'ngos' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">NGO's</button>
+                                        <button type="button" @click="activeIrrExternalTab = 'others'" :class="activeIrrExternalTab === 'others' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Other Organizations</button>
                                     </div>
 
                                     <div class="space-y-2">
                                         <div v-for="(name, index) in irrForm.external_institutions[activeIrrExternalTab]" :key="activeIrrExternalTab + index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-indigo-300 w-3 text-right">{{ index + 1 }}.</span>
+                                            <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                             <div class="relative flex-1">
                                                 <input v-model="irrForm.external_institutions[activeIrrExternalTab][index]" type="text" 
-                                                    class="w-full rounded-lg border border-indigo-200 text-sm px-3 py-2 bg-white" placeholder="Type name..." />
+                                                    class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white" placeholder="Type name..." />
                                             </div>
                                             <button type="button" @click="irrForm.external_institutions[activeIrrExternalTab].splice(index, 1)" 
                                                     class="text-red-300 hover:text-red-500" v-if="irrForm.external_institutions[activeIrrExternalTab].length > 1">
@@ -1142,7 +1147,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             </button>
                                         </div>
                                         <button type="button" @click="irrForm.external_institutions[activeIrrExternalTab].push('')" 
-                                                class="mt-2 text-[10px] font-bold uppercase text-indigo-600 hover:text-indigo-800 ml-5">
+                                                class="mt-2 text-[10px] font-bold uppercase text-blue-600 hover:text-blue-800 ml-5">
                                             + Add Row
                                         </button>
                                     </div>
@@ -1152,14 +1157,14 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-gray-700">IRR Status <span class="text-red-500">*</span></label>
-                                    <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
                                         <option value="Active">Active</option>
                                         <option value="On-hold">On-hold</option>
                                         <option value="Dropped">Dropped</option>
                                     </select>
                                 </div>
                                 <div class="pt-6">
-                                    <input type="file" @change="(e) => irrForm.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" required class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-indigo-50 file:text-indigo-700 cursor-pointer"/>
+                                    <input type="file" @change="(e) => irrForm.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" required class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"/>
                                 </div>
                             </div>
 
@@ -1168,7 +1173,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 <div class="space-y-3">
                                     <div v-for="irr in selectedRecord.implementing_rules" :key="irr.id" class="flex items-center justify-between p-3 rounded-lg border border-gray-200" :class="irr.is_active ? 'bg-white' : 'bg-gray-50 opacity-75'">
                                         <div class="flex items-center gap-3">
-                                            <Paperclip class="w-4 h-4 text-indigo-500" />
+                                            <Paperclip class="w-4 h-4 text-blue-500" />
                                             <div>
                                                 <p class="text-xs font-bold text-gray-900">IRR Document <span v-if="!irr.is_active" class="text-red-500 ml-1">(Disabled)</span></p>
                                                 <p class="text-[10px] text-gray-500">Lead: {{ irr.lead_office?.name || 'Unknown' }}</p>
@@ -1176,7 +1181,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-2">
-                                            <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="text-indigo-600 hover:text-indigo-800 p-1.5"><Eye class="w-4 h-4" /></a>
+                                            <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="text-blue-600 hover:text-blue-800 p-1.5"><Eye class="w-4 h-4" /></a>
                                             <button v-if="irr.is_active" @click.prevent="confirmDisableIrr(irr.id)" class="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded" title="Disable IRR">
                                                 <AlertTriangle class="w-4 h-4" />
                                             </button>
@@ -1187,7 +1192,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                             <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
                                 <button type="button" @click="showIrrDialog = false" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors">Close</button>
-                                <button type="submit" :disabled="irrForm.processing" class="flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-indigo-700 transition-colors disabled:opacity-70">
+                                <button type="submit" :disabled="irrForm.processing" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-70">
                                     <CheckCircle2 v-if="!irrForm.processing" class="w-4 h-4" /> Upload IRR
                                 </button>
                             </div>

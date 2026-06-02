@@ -4,7 +4,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { 
     FileText, Plus, Search, Calendar, Building2, Link as LinkIcon, 
     Download, AlertCircle, Clock, CheckCircle2, XCircle, Info, Users,
-    Pencil, Eye
+    Pencil, Eye, Filter
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
@@ -13,23 +13,21 @@ import { route } from 'ziggy-js';
 
 // --- Props ---
 const props = defineProps<{
-    eos: {
-        data: Array<any>;
-        links: Array<any>;
-        from: number; to: number; total: number;
-        current_page: number; last_page: number;
-    };
+    eos: { data: Array<any>; links: Array<any>; from: number; to: number; total: number; current_page: number; last_page: number; };
     departments: Array<{ id: number; code?: string; name: string }>;
     statuses: Array<{ id: number; name: string }>;
     classifications: Array<{ id: number; name: string }>;
     existing_eos: Array<{ id: number; eo_number: string; title: string }>;
     peopleRegistry: Array<{ name: string; title: string; type: string }>;
-    filters?: { search?: string };
+    filters?: { search?: string; year?: string; is_active?: string }; // 🚀 Updated
+    available_years: number[]; // 🚀 Added
     flash?: { success?: string; error?: string };
 }>();
 
-// --- Search & Loading State ---
+// --- Search & Filter State ---
 const searchTerm = ref(props.filters?.search || '');
+const filterYear = ref(props.filters?.year || 'all');
+const filterActive = ref(props.filters?.is_active || 'all');
 const isLoading = ref(false);
 let searchTimeout: ReturnType<typeof setTimeout>;
 
@@ -37,7 +35,7 @@ const performSearch = () => {
     clearTimeout(searchTimeout);
     isLoading.value = true;
     searchTimeout = setTimeout(() => {
-        router.get(route('eo.index'), { search: searchTerm.value }, { 
+        router.get(route('eo.index'), { search: searchTerm.value, year: filterYear.value, is_active: filterActive.value }, { 
             preserveState: true, 
             preserveScroll: true,
             onFinish: () => isLoading.value = false 
@@ -45,17 +43,18 @@ const performSearch = () => {
     }, 300);
 };
 
-watch(searchTerm, performSearch);
+// 🚀 Watch all three filters instead of just search
+watch([searchTerm, filterYear, filterActive], performSearch);
 
 const clearSearch = () => {
     searchTerm.value = '';
-    isLoading.value = true;
-    router.get(route('eo.index'), {}, { onFinish: () => isLoading.value = false });
+    filterYear.value = 'all';
+    filterActive.value = 'all';
 };
 
 const goToPage = (url: string) => {
     if (!url) return;
-    router.get(url, { search: searchTerm.value }, { preserveState: true, preserveScroll: false });
+    router.get(url, { search: searchTerm.value, year: filterYear.value, is_active: filterActive.value }, { preserveState: true, preserveScroll: false });
 };
 
 // --- Notifications ---
@@ -95,8 +94,10 @@ const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
 
 const filteredParents = computed(() => {
-    // Note: Use props.existing_ordinances for the Ordinance file
     let list = props.existing_eos || []; 
+    
+    // 🚀 THE FIX: Only let users search for Active documents
+    list = list.filter(item => item.is_active);
     
     // 1. Don't let a document amend itself
     if (isEdit.value && editingId.value) {
@@ -107,7 +108,7 @@ const filteredParents = computed(() => {
     if (form.effectivity_date) {
         const newDocDate = new Date(form.effectivity_date).getTime();
         list = list.filter(item => {
-            if (!item.effectivity_date) return true; // Keep if parent has no date
+            if (!item.effectivity_date) return true; 
             return new Date(item.effectivity_date).getTime() <= newDocDate;
         });
     }
@@ -116,7 +117,6 @@ const filteredParents = computed(() => {
     if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
         list = list.filter(item => {
-            // Adjust to item.ordinance_number for the Ordinance file
             const trackingNo = item.eo_number ? item.eo_number.toLowerCase() : ''; 
             const title = item.title ? item.title.toLowerCase() : '';
             return trackingNo.includes(q) || title.includes(q);
@@ -251,10 +251,10 @@ const getSuggestions = (query: any, typeFilter: string | null = null, fieldName:
         return []; 
     }
 
+    // 🚀 FIXED: Now it ONLY checks the person's name!
     return list.filter(p => {
         const safeName = p.name ? String(p.name).toLowerCase() : '';
-        const safeTitle = p.title ? String(p.title).toLowerCase() : '';
-        return safeName.includes(currentSearch) || safeTitle.includes(currentSearch);
+        return safeName.includes(currentSearch);
     }).slice(0, 10);
 };
 
@@ -505,15 +505,31 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-white p-4 md:p-8">
             
-            <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm md:flex-row">
-                <div class="relative max-w-md flex-1 w-full md:w-auto">
+            <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm xl:flex-row flex-wrap">
+                <div class="relative w-full md:max-w-md xl:flex-1">
                     <Search class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-gray-400" />
-                    <input v-model="searchTerm" type="text" placeholder="Search EO Number, Title or Keywords..." class="block w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                    <button v-if="searchTerm" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
+                    <input v-model="searchTerm" type="text" placeholder="Search EO Number, Title or Keywords..." class="block w-full rounded-lg border border-gray-300 bg-gray-50 hover:bg-white focus:bg-white py-2 pr-10 pl-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
+                    <button v-if="searchTerm || filterYear !== 'all' || filterActive !== 'all'" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors" title="Clear Filters">×</button>
                 </div>
-                <button v-if="$page.props.auth.user.role !== 'user'" class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 transition" @click="openAddDialog">
-                    <Plus class="h-4 w-4" /> Encode EO
-                </button>
+                
+                <div class="flex items-center justify-between xl:justify-end gap-4 w-full xl:w-auto flex-wrap sm:flex-nowrap">
+                    <div class="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 flex-1 sm:flex-none">
+                        <Filter class="w-4 h-4 text-gray-400 ml-2 hidden sm:block" />
+                        <select v-model="filterYear" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">
+                            <option value="all">Years</option>
+                            <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                        <select v-model="filterActive" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 w-full sm:w-auto outline-none">
+                            <option value="all">Statuses</option>
+                            <option value="active">Active Only</option>
+                            <option value="inactive">Inactive Only</option>
+                        </select>
+                    </div>
+
+                    <button v-if="$page.props.auth.user.role !== 'user'" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 transition shrink-0" @click="openAddDialog">
+                        <Plus class="h-4 w-4" /> Encode EO
+                    </button>
+                </div>
             </div>
 
             <div class="overflow-hidden rounded-xl border bg-white shadow-sm">
