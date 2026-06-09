@@ -28,7 +28,9 @@ class PublicEOController extends Controller
                 'departments',                  
                 'implementingRules' => $irrFilter, 
                 'parentOrdinance', 
-                'amendments'
+                'amendments',
+                'committees.members', // include committees.members so public view can show committee members for ordinances
+                'committees.registry'
             ]);
             
             // Deep Search for Ordinances
@@ -61,7 +63,9 @@ class PublicEOController extends Controller
                 'status', 
                 'departments', 
                 'parentEO', 
-                'amendments'
+                'amendments',
+                'committees.members',
+                'committees.registry',
             ]);
 
             // Deep Search for Executive Orders
@@ -70,7 +74,6 @@ class PublicEOController extends Controller
                     $q->where('eo_number', 'LIKE', "%{$search}%")
                       ->orWhere('title', 'LIKE', "%{$search}%")
                       ->orWhere('subject_matter', 'LIKE', "%{$search}%")
-                      ->orWhereRaw('LOWER(committee_details) LIKE ?', ['%'.strtolower($search).'%'])
                       ->orWhereHas('departments', function($deptQuery) use ($search) {
                           $deptQuery->where('name', 'LIKE', "%{$search}%");
                       });
@@ -87,14 +90,18 @@ class PublicEOController extends Controller
             
             $query->orderBy('id', 'desc');
         }
-
+        $query->where('is_active', true);
+        
+        // 2. Must be strictly New or Amendment
         $query->whereHas('status', function($q) {
-            $q->where('name', '!=', 'Draft');
+            $q->whereIn('name', ['New', 'Amendment']);
         });
 
+        $query->orderBy('id', 'desc');
+
         $stats = [
-            'total_eos' => ExecutiveOrder::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
-            'total_ordinances' => Ordinance::whereHas('status', fn($q) => $q->where('name', 'Active'))->count(),
+            'total_eos' => ExecutiveOrder::where('is_active', true)->whereHas('status', fn($q) => $q->whereIn('name', ['New', 'Amendment']))->count(),
+            'total_ordinances' => Ordinance::where('is_active', true)->whereHas('status', fn($q) => $q->whereIn('name', ['New', 'Amendment']))->count(),
             'latest_date' => now()->format('F d, Y'),
         ];
 
@@ -102,8 +109,71 @@ class PublicEOController extends Controller
             ? Ordinance::selectRaw('YEAR(date_enacted) as year')->distinct()->orderBy('year', 'desc')->pluck('year')
             : ExecutiveOrder::selectRaw('YEAR(date_issued) as year')->distinct()->orderBy('year', 'desc')->pluck('year');
 
+        // Paginate and ensure nested relation `committees.members` is loaded for each record
+        $records = $query->paginate(10)->withQueryString();
+
+        // In some environments nested eager loads can be lost during pagination/serialization;
+        // defensively ensure `committees.members` is present on each item and add debug info.
+        $records->getCollection()->transform(function ($item) {
+            $item->loadMissing(['committees.members', 'committees.registry']);
+
+            // compute a simple members count and a small serializable representation
+            $memberCount = 0;
+            $simple = [];
+            $externalMembers = [];
+            $externalNgos = [];
+            $externalOthers = [];
+            if ($item->relationLoaded('committees') && $item->committees) {
+                foreach ($item->committees as $committee) {
+                    $cExtMembers = [];
+                    $cExtNgos = [];
+                    $cExtOthers = [];
+
+                    if ($committee->relationLoaded('members') && $committee->members) {
+                        foreach ($committee->members as $m) {
+                            $memberCount++;
+                            $simple[] = [
+                                'committee' => $committee->name,
+                                'registry' => $committee->registry->name ?? null,
+                                'role' => $m->pivot->role ?? null,
+                                'name' => $m->name ?? null,
+                            ];
+
+                            // Collect external categories by pivot role keywords so the frontend has a direct source
+                            $role = strtolower($m->pivot->role ?? '');
+                            if (strpos($role, 'external') !== false) {
+                                $externalMembers[] = $m->name ?? null;
+                                $cExtMembers[] = $m->name ?? null;
+                            } elseif (strpos($role, 'ngo') !== false) {
+                                $externalNgos[] = $m->name ?? null;
+                                $cExtNgos[] = $m->name ?? null;
+                            } elseif (strpos($role, 'other') !== false) {
+                                $externalOthers[] = $m->name ?? null;
+                                $cExtOthers[] = $m->name ?? null;
+                            }
+                        }
+                    }
+
+                    // attach committee-scoped external lists for the frontend
+                    $committee->external_members_from_pivot = array_values(array_filter($cExtMembers));
+                    $committee->external_ngos_from_pivot = array_values(array_filter($cExtNgos));
+                    $committee->external_others_from_pivot = array_values(array_filter($cExtOthers));
+                }
+            }
+
+            // Attach debug attributes that will be serialized into the Inertia props
+            $item->committee_member_count = $memberCount;
+            $item->committee_members_simple = $simple;
+            // Attach pivot-derived external member arrays for reliable frontend rendering
+            $item->external_members_from_pivot = array_values(array_filter($externalMembers));
+            $item->external_ngos_from_pivot = array_values(array_filter($externalNgos));
+            $item->external_others_from_pivot = array_values(array_filter($externalOthers));
+
+            return $item;
+        });
+
         return Inertia::render('public/Home', [
-            'records' => $query->paginate(12)->withQueryString(),
+            'records' => $records,
             'departments' => Department::select('id', 'name')->get(), 
             'filters' => $request->only(['search', 'year', 'type', 'is_active']),
             'years' => $years,
@@ -111,4 +181,6 @@ class PublicEOController extends Controller
             'stats' => $stats,
         ]);
     }
+
+    
 }

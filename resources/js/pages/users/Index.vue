@@ -3,7 +3,7 @@ import DeleteConfirmationModal from '@/components/DeleteConfirmationModal.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Pencil, Plus, Search, Trash2, User as UserIcon } from 'lucide-vue-next';
+import { Pencil, Plus, Search, Trash2, User as UserIcon, CheckCircle2 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -13,6 +13,7 @@ const props = defineProps<{
     users: {
         data: Array<{
             id: number;
+            pmis_id?: number | null;
             name: string;
             email: string;
             role: string;
@@ -28,6 +29,8 @@ const props = defineProps<{
         links: Array<any>;
     };
     departments: Array<{ id: number; name: string }>;
+    // 🚀 STEP 1: pmis_id is added here so Vue knows about it
+    employees: Array<{ id: number; pmis_id: number; full_name: string; position: string }>; 
     filters?: { search?: string };
     flash?: { success?: string; error?: string };
 }>();
@@ -75,6 +78,7 @@ const itemToDeleteName = ref('');
 
 // --- Form ---
 const form = useForm({
+    pmis_id: '' as string | number, 
     name: '',
     email: '',
     role: 'focal_person',
@@ -83,11 +87,38 @@ const form = useForm({
     password_confirmation: '',
 });
 
+// 🚀 STEP 2: The Watcher that auto-fills the name if you type an ID!
+watch(() => form.pmis_id, (newId) => {
+    if (newId) {
+        const matchedEmployee = props.employees.find(e => String(e.pmis_id) === String(newId));
+        if (matchedEmployee) {
+            form.name = matchedEmployee.full_name;
+            activeSuggestion.value = false; 
+        }
+    }
+});
+
+// --- Suggestive Search Logic ---
+const activeSuggestion = ref(false);
+
+const getSuggestions = (query: string) => {
+    if (!query || query.trim().length < 2) return [];
+    const q = query.toLowerCase();
+    return props.employees.filter(e => e.full_name && e.full_name.toLowerCase().includes(q)).slice(0, 10);
+};
+
+const selectPerson = (employee: any) => {
+    form.name = employee.full_name;
+    form.pmis_id = employee.pmis_id; // 🚀 Uses the correct pmis_id
+    activeSuggestion.value = false;
+};
+
 function openAddDialog() {
     isEdit.value = false;
     editingId.value = null;
     form.reset();
     form.clearErrors();
+    activeSuggestion.value = false;
     showDialog.value = true;
 }
 
@@ -95,11 +126,13 @@ function openEditDialog(user: any) {
     isEdit.value = true;
     editingId.value = user.id;
     form.reset();
+    form.pmis_id = user.pmis_id || ''; 
     form.name = user.name;
     form.email = user.email;
     form.role = user.role;
     form.department_id = user.department_id || '';
     form.clearErrors();
+    activeSuggestion.value = false;
     showDialog.value = true;
 }
 
@@ -161,7 +194,7 @@ const getRoleBadgeColor = (role: string) => {
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="user in users.data" :key="user.id" class="hover:bg-gray-50 transition-colors">
                                 <td class="px-6 py-3">
-                                    <div class="font-medium text-gray-900">{{ user.name }}</div>
+                                    <div class="font-medium text-gray-900">{{ user.name }} <span v-if="user.pmis_id" class="text-[10px] text-gray-400 ml-1">({{ user.pmis_id }})</span></div>
                                     <div class="text-xs text-gray-500">{{ user.email }}</div>
                                 </td>
                                 <td class="px-6 py-3">
@@ -197,27 +230,62 @@ const getRoleBadgeColor = (role: string) => {
             <DeleteConfirmationModal v-model:show="showDeleteModal" :deleteUrl="itemToDeleteUrl" :item-name="itemToDeleteName" title="Delete User" />
 
             <Transition name="fade">
-                <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+                <div v-if="showDialog" @click="activeSuggestion = false" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
+                    <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto" @click.stop>
                         <h2 class="mb-6 text-lg font-semibold text-gray-900">{{ isEdit ? 'Edit User' : 'Create New User' }}</h2>
+                        
                         <form @submit.prevent="submitForm" class="space-y-4">
                             
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
-                                    <input v-model="form.name" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
-                                    <p v-if="form.errors.name" class="text-xs text-red-500 mt-1">{{ form.errors.name }}</p>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">PMIS ID <span class="text-[10px] text-gray-400 font-normal italic">(Optional)</span></label>
+                                    <input 
+                                        v-model="form.pmis_id" 
+                                        type="number" 
+                                        class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
+                                        placeholder="e.g. 10452" 
+                                    />
+                                    <p v-if="form.errors.pmis_id" class="text-xs text-red-500 mt-1">{{ form.errors.pmis_id }}</p>
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Email</label>
-                                    <input v-model="form.email" type="email" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
-                                    <p v-if="form.errors.email" class="text-xs text-red-500 mt-1">{{ form.errors.email }}</p>
+
+                                <div class="relative">
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
+                                    <input 
+                                        v-model="form.name" 
+                                        type="text" 
+                                        @focus.stop="activeSuggestion = true"
+                                        @click.stop="activeSuggestion = true"
+                                        @input="activeSuggestion = true; form.pmis_id = ''" 
+                                        class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
+                                        placeholder="Search employee or type name..."
+                                        required 
+                                    />
+                                    
+                                    <div v-if="activeSuggestion && getSuggestions(form.name).length > 0" class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                        <div v-for="emp in getSuggestions(form.name)" :key="emp.id" @mousedown.prevent="selectPerson(emp)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                            <div class="text-sm font-bold text-gray-800">{{ emp.full_name }}</div>
+                                            <div class="text-[10px] text-gray-500 uppercase tracking-widest flex items-center justify-between">
+                                                <span>{{ emp.position || 'Employee' }}</span>
+                                                <span class="text-blue-500 font-bold">PMIS: {{ emp.pmis_id }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <p v-if="form.errors.name" class="text-xs text-red-500 mt-1">{{ form.errors.name }}</p>
+                                    <p v-if="form.pmis_id" class="text-[10px] text-green-600 font-bold mt-1 uppercase tracking-wide flex items-center gap-1">
+                                        <CheckCircle2 class="w-3 h-3" /> Linked to HR Record
+                                    </p>
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Role</label>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Email <span class="text-red-500">*</span></label>
+                                    <input v-model="form.email" type="email" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
+                                    <p v-if="form.errors.email" class="text-xs text-red-500 mt-1">{{ form.errors.email }}</p>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Role <span class="text-red-500">*</span></label>
                                     <select v-model="form.role" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                                         <option value="system_admin">System Admin</option>
                                         <option value="supervisor">Supervisor</option>
@@ -227,33 +295,36 @@ const getRoleBadgeColor = (role: string) => {
                                     </select>
                                     <p v-if="form.errors.role" class="text-xs text-red-500 mt-1">{{ form.errors.role }}</p>
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Department</label>
-                                    <select v-model="form.department_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                                        <option value="">None</option>
-                                        <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
-                                    </select>
-                                </div>
                             </div>
 
-                            <div class="border-t pt-4 mt-2">
-                                <div v-if="isEdit" class="text-xs text-gray-500 mb-2 italic">Leave blank to keep current password.</div>
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-gray-700">Department</label>
+                                <select v-model="form.department_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                                    <option value="">None</option>
+                                    <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                </select>
+                            </div>
+
+                            <div class="border-t border-gray-100 pt-4 mt-2">
+                                <div v-if="isEdit" class="text-[11px] text-gray-500 font-medium mb-3 bg-gray-50 p-2 rounded-lg border border-gray-100 text-center">
+                                    Leave blank to keep current password.
+                                </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-gray-700">Password</label>
                                         <input v-model="form.password" type="password" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :required="!isEdit" />
                                     </div>
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">Confirm</label>
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">Confirm Password</label>
                                         <input v-model="form.password_confirmation" type="password" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" :required="!isEdit" />
                                     </div>
                                 </div>
                                 <p v-if="form.errors.password" class="text-xs text-red-500 mt-1">{{ form.errors.password }}</p>
                             </div>
 
-                            <div class="flex justify-end gap-3 pt-2">
-                                <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200" @click="showDialog = false">Cancel</button>
-                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50" :disabled="form.processing">
+                            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-6">
+                                <button type="button" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors" @click="showDialog = false">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50" :disabled="form.processing">
                                     {{ form.processing ? 'Saving...' : isEdit ? 'Update User' : 'Create User' }}
                                 </button>
                             </div>

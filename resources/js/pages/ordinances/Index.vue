@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { 
-    Gavel, Plus, Search, Building2, BookOpen, AlertCircle, 
+import {
+    Gavel, Plus, Search, Building2, BookOpen, AlertCircle,
     UserCheck, Clock, Trash2, XCircle, Info, Pencil, Eye, Filter, CheckCircle2, Paperclip, AlertTriangle
 } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
@@ -20,13 +20,13 @@ const props = defineProps<{
     departments: Array<{ id: number; code?: string; name: string }>;
     statuses: Array<{ id: number; name: string }>;
     existing_ordinances: Array<{ id: number; ordinance_number: string; title: string }>;
-    peopleRegistry: Array<{ name: string; title: string; type: string }>; 
+    peopleRegistry: Array<{ name: string; title: string; type: string }>;
+    committeeRegistries: Array<{ id: number; name: string; members: Array<any> }>; // 🚀 ADDED PROP
     filters?: { search?: string; year?: string; is_active?: string };
     available_years: number[];
     flash?: { success?: string; error?: string };
 }>();
 
-// --- Search & Filter State ---
 const searchTerm = ref(props.filters?.search || '');
 const filterYear = ref(props.filters?.year || 'all');
 const filterActive = ref(props.filters?.is_active || 'all');
@@ -57,60 +57,52 @@ const showIrrDialog = ref(false);
 const showDisableIrrDialog = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
-const activeModalTab = ref('details'); 
+const activeModalTab = ref('details');
 const activeAuthorTab = ref('authors');
-const selectedRecord = ref<any>(null); 
+const selectedRecord = ref<any>(null);
 const selectedIrrId = ref<number | null>(null);
 
 const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
+const implementingSearchQuery = ref('');
+const supportSearchQuery = ref('');
+const deptIrrSearchQuery = ref('');
 
 const filteredParents = computed(() => {
-    let list = props.existing_ordinances || []; 
-    
-    // 🚀 THE FIX: Only let users search for Active documents
+    let list = props.existing_ordinances || [];
     list = list.filter(item => item.is_active);
-    
-    // 1. Don't let a document amend itself
+
     if (isEdit.value && editingId.value) {
         list = list.filter(item => item.id !== editingId.value);
     }
-    
-    // 2. STRICT DATE FILTER: Parent effectivity date must be <= New document's effectivity date
+
     if (form.effectivity_date) {
         const newDocDate = new Date(form.effectivity_date).getTime();
         list = list.filter(item => {
-            if (!item.effectivity_date) return true; 
+            if (!item.effectivity_date) return true;
             return new Date(item.effectivity_date).getTime() <= newDocDate;
         });
     }
-    
-    // 3. Search text
+
     if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
         list = list.filter(item => {
-            const trackingNo = item.ordinance_number ? item.ordinance_number.toLowerCase() : ''; 
+            const trackingNo = item.ordinance_number ? item.ordinance_number.toLowerCase() : '';
             const title = item.title ? item.title.toLowerCase() : '';
             return trackingNo.includes(q) || title.includes(q);
         });
     }
-    
     return list.slice(0, 15);
 });
 
-// 🚀 FIXED: Custom Sort to force "New" to the top
 const selectableStatuses = computed(() => {
     const autoStatuses = ['Amended', 'Repealed', 'Superseded'];
-    
-    // First, filter out invalid statuses
     const filtered = props.statuses.filter(s => {
         if (autoStatuses.includes(s.name)) {
             return isEdit.value && selectedRecord.value?.status_id === s.id;
         }
-        return true; 
+        return true;
     });
-
-    // Then, sort so "New" is index 0
     return filtered.sort((a, b) => {
         if (a.name === 'New') return -1;
         if (b.name === 'New') return 1;
@@ -132,52 +124,56 @@ const selectParent = (parent: any) => {
 const clearParent = () => {
     form.amends_ordinance_id = '';
     parentSearchQuery.value = '';
-    form.relationship_type = 'Partial Amendment'; 
+    form.relationship_type = 'Partial Amendment';
 };
 
-// --- DYNAMIC ARRAY HELPERS ---
-const parseFixed4Members = (val: any) => {
-    let parsed: string[] = [];
-    if (Array.isArray(val)) {
-        parsed = [...val];
-    } else if (val && typeof val === 'string') {
-        try {
-            parsed = JSON.parse(val);
-        } catch {
-            parsed = val.split(/[\n,]+/).map((s: string) => s.trim()).filter(Boolean);
-        }
-    }
-    while (parsed.length < 4) parsed.push('');
-    return parsed;
-};
+// 🚀 THE OBJECT RULE
+const createEmptyMember = () => ({ id: null, pmis_id: null, name: '' });
+
+const defaultAuthorDetails = () => ({
+    introduced_by: createEmptyMember(),
+    is_primary_author: true,
+    sponsorship_committee: { id: null, name: '' },
+    committee_chairmanship: createEmptyMember(),
+    co_authors: Array.from({ length: 4 }, createEmptyMember),
+    committee_members: Array.from({ length: 4 }, createEmptyMember)
+});
+
+const defaultIrrExternalInstitutions = () => ({
+    members: Array.from({ length: 4 }, createEmptyMember),
+    ngos: Array.from({ length: 4 }, createEmptyMember),
+    others: Array.from({ length: 4 }, createEmptyMember)
+});
 
 const addMember = (field: string) => {
-    if (field === 'co_authors') form.author_details.co_authors.push('');
-    else if (field === 'committee_members') form.author_details.committee_members.push('');
-    else if (field === 'external_institutions') form.external_institutions.members.push('');
-    else if (field === 'irr_external') irrForm.external_institutions.members.push('');
+    if (field === 'co_authors') form.author_details.co_authors.push(createEmptyMember());
+    else if (field === 'committee_members') form.author_details.committee_members.push(createEmptyMember());
+    else if (field === 'external_members') form.external_institutions.members.push(createEmptyMember());
+    else if (field === 'external_ngos') form.external_institutions.ngos.push(createEmptyMember());
+    else if (field === 'external_others') form.external_institutions.others.push(createEmptyMember());
+    else if (field === 'irr_external_members') irrForm.external_institutions.members.push(createEmptyMember());
+    else if (field === 'irr_external_ngos') irrForm.external_institutions.ngos.push(createEmptyMember());
+    else if (field === 'irr_external_others') irrForm.external_institutions.others.push(createEmptyMember());
 };
 
 const removeMember = (field: string, index: number) => {
     if (field === 'co_authors') form.author_details.co_authors.splice(index, 1);
     else if (field === 'committee_members') form.author_details.committee_members.splice(index, 1);
+    else if (field === 'external_members') form.external_institutions.members.splice(index, 1);
+    else if (field === 'external_ngos') form.external_institutions.ngos.splice(index, 1);
+    else if (field === 'external_others') form.external_institutions.others.splice(index, 1);
+    else if (field === 'irr_external_members') irrForm.external_institutions.members.splice(index, 1);
+    else if (field === 'irr_external_ngos') irrForm.external_institutions.ngos.splice(index, 1);
+    else if (field === 'irr_external_others') irrForm.external_institutions.others.splice(index, 1);
 };
-
-const defaultAuthorDetails = () => ({
-    introduced_by: '',
-    is_primary_author: true,
-    committee_chairmanship: '',
-    co_authors: [''], 
-    committee_members: ['']
-});
 
 const form = useForm({
     ordinance_number: '',
     title: '',
-    subject_matter: '', 
+    subject_matter: '',
     date_approved: '',
     effectivity_date: '',
-    date_enacted: '', 
+    date_enacted: '',
     presiding_officer: '',
     attested_by: '',
     approved_by: '',
@@ -187,12 +183,13 @@ const form = useForm({
     relationship_type: 'Partial Amendment',
     remarks: '',
     author_details: defaultAuthorDetails(),
+    selected_registry_id: '' as string | number,
     lead_office_id: '' as string | number,
-    support_office_ids: [] as number[], 
+    support_office_ids: [] as number[],
     external_institutions: {
-        members: [''],
-        ngos: [''],
-        others: ['']
+        members: Array.from({ length: 4 }, createEmptyMember),
+        ngos: Array.from({ length: 4 }, createEmptyMember),
+        others: Array.from({ length: 4 }, createEmptyMember)
     },
     file: null as File | null,
 });
@@ -202,12 +199,8 @@ const activeOrdinanceExternalTab = ref('members');
 const irrForm = useForm({
     status: 'Active',
     lead_office_id: '' as string | number,
-    support_offices: [{ id: '' as string | number, name: '' }], 
-    external_institutions: {
-        members: [''],
-        ngos: [''],
-        others: ['']
-    },
+    support_offices: [{ id: '' as string | number, name: '' }],
+    external_institutions: defaultIrrExternalInstitutions(),
     file: null as File | null,
 });
 
@@ -223,7 +216,7 @@ const getDeptCode = (titleStr?: string) => {
     if (match) {
         const officeName = match[1].trim();
         const dept = props.departments.find(d => d.name === officeName);
-        return dept && dept.code ? dept.code : officeName; 
+        return dept && dept.code ? dept.code : officeName;
     }
     return '';
 };
@@ -233,12 +226,17 @@ const normalize = (s: string) => s ? String(s).toLowerCase().replace(/[^a-z0-9]/
 const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: number = -1) => {
     const selected = new Set<string>();
     const a = form.author_details;
+    const e = form.external_institutions;
+    const irrE = irrForm.external_institutions;
 
     const addVal = (val: any, field: string, idx: number = -1) => {
         if (field === ignoreField && idx === ignoreIndex) return;
         if (!val) return;
-        if (typeof val === 'string') {
-            val.split(/[,]+/).forEach(v => {
+
+        const name = typeof val === 'object' ? val.name : val;
+
+        if (typeof name === 'string' && name.trim() !== '') {
+            name.split(/[,]+/).forEach((v: string) => {
                 const norm = normalize(v);
                 if (norm) selected.add(norm);
             });
@@ -249,28 +247,40 @@ const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: num
     addVal(a.committee_chairmanship, 'committee');
     a.co_authors.forEach((v, i) => addVal(v, 'co_authors', i));
     a.committee_members.forEach((v, i) => addVal(v, 'committee_members', i));
-    
+
+    e.members.forEach((v, i) => addVal(v, 'external_members', i));
+    e.ngos.forEach((v, i) => addVal(v, 'external_ngos', i));
+    e.others.forEach((v, i) => addVal(v, 'external_others', i));
+
+    irrE.members.forEach((v, i) => addVal(v, 'irr_external_members', i));
+    irrE.ngos.forEach((v, i) => addVal(v, 'irr_external_ngos', i));
+    irrE.others.forEach((v, i) => addVal(v, 'irr_external_others', i));
+
     return Array.from(selected);
 };
 
-const getSuggestions = (query: string, fieldName: string | null = null, idx: number = -1) => {
+const getSuggestions = (query: any, typeFilter: string | null = null, fieldName: string | null = null, idx: number = -1) => {
     let list = props.peopleRegistry || [];
-    
+
+    if (typeFilter) {
+        list = list.filter(p => {
+            if (typeFilter === 'Internal') return p.type === 'Internal' || p.type === 'Internal(Registered)';
+            if (typeFilter === 'External') return p.type === 'External' || p.type === 'External(Registered)';
+            return p.type === typeFilter;
+        });
+    }
+
     const globallySelectedNames = getCurrentlySelectedPeople(fieldName, idx);
     if (globallySelectedNames.length > 0) {
         list = list.filter(p => !globallySelectedNames.includes(normalize(p.name || '')));
     }
 
-    if (!query || query.trim() === '') {
-        return []; 
-    }
-    
+    if (!query || typeof query !== 'string' || query.trim() === '') return [];
+
     const parts = query.split(/[\n,]+/).map(s => s.trim());
     const currentSearch = parts[parts.length - 1].toLowerCase();
-    
-    if (!currentSearch || currentSearch.length < 2) {
-        return [];
-    }
+
+    if (!currentSearch || currentSearch.length < 2) return [];
 
     return list.filter(p => {
         const safeName = p.name ? String(p.name).toLowerCase() : '';
@@ -278,26 +288,117 @@ const getSuggestions = (query: string, fieldName: string | null = null, idx: num
     }).slice(0, 10);
 };
 
-const selectPerson = (field: string, name: string, index?: number) => {
-    if (field === 'introduced_by') form.author_details.introduced_by = name;
-    else if (field === 'committee') form.author_details.committee_chairmanship = name;
-    else if (field === 'co_authors' && index !== undefined) form.author_details.co_authors[index] = name;
-    else if (field === 'committee_members' && index !== undefined) form.author_details.committee_members[index] = name;
+const selectPerson = (field: string, person: any, index?: number) => {
+    const personObj = { id: person.id || null, pmis_id: person.pmis_id || null, name: person.name };
+    const nameStr = person.name;
+
+    // Object fields for Ordinance Main Form
+    if (field === 'introduced_by') form.author_details.introduced_by = personObj;
+    else if (field === 'committee') form.author_details.committee_chairmanship = personObj;
+    else if (field === 'co_authors' && index !== undefined) form.author_details.co_authors[index] = personObj;
+    else if (field === 'committee_members' && index !== undefined) form.author_details.committee_members[index] = personObj;
+    else if (field === 'external_members' && index !== undefined) form.external_institutions.members[index] = personObj;
+    else if (field === 'external_ngos' && index !== undefined) form.external_institutions.ngos[index] = personObj;
+    else if (field === 'external_others' && index !== undefined) form.external_institutions.others[index] = personObj;
+
+    // Object fields for IRR Form
+    else if (field === 'irr_external_members' && index !== undefined) irrForm.external_institutions.members[index] = personObj;
+    else if (field === 'irr_external_ngos' && index !== undefined) irrForm.external_institutions.ngos[index] = personObj;
+    else if (field === 'irr_external_others' && index !== undefined) irrForm.external_institutions.others[index] = personObj;
+
+    // String fields
+    else if (field === 'presiding_officer') form.presiding_officer = nameStr;
+    else if (field === 'attested_by') form.attested_by = nameStr;
+    else if (field === 'approved_by') form.approved_by = nameStr;
+
     activeSuggestion.value = null;
 };
 
-const implementingSearchQuery = ref('');
-const getDeptSuggestions = (query: string) => {
-    let list = props.departments;
-    if (form.support_office_ids && form.support_office_ids.length > 0) {
-        list = list.filter(d => !form.support_office_ids.includes(d.id));
-    }
-    if (!query) return list.slice(0, 10);
-    const q = query.toLowerCase();
-    return list.filter(d => d.name.toLowerCase().includes(q)).slice(0, 10);
+// 🚀 NEW: COMMITTEE REGISTRY LOGIC
+const selectedRegistryId = ref('');
+const showRegistryMenu = ref(false);
+const sponsorshipSearchQuery = ref('');
+
+const selectRegistry = (reg: any) => {
+    if (!reg) return;
+    selectedRegistryId.value = reg.id;
+    form.selected_registry_id = reg.id;
+    sponsorshipSearchQuery.value = reg.name;
+    loadFromRegistry();
+    showRegistryMenu.value = false;
 };
 
-const supportSearchQuery = ref('');
+const clearSponsorship = () => {
+    form.author_details.sponsorship_committee = { id: null, name: '' };
+    sponsorshipSearchQuery.value = '';
+    selectedRegistryId.value = '';
+    form.selected_registry_id = '';
+    // Clear committee members UI when sponsorship is cleared
+    form.author_details.committee_members = Array.from({ length: 4 }, createEmptyMember);
+    activeSuggestion.value = null;
+};
+
+
+const loadFromRegistry = () => {
+    if (!selectedRegistryId.value) return;
+    const selectedRegistry = props.committeeRegistries.find(c => c.id == Number(selectedRegistryId.value));
+    
+    if (selectedRegistry && selectedRegistry.members) {
+        // Set the sponsorship committee name/id and map the database members into the form structure
+        form.author_details.sponsorship_committee = form.author_details.sponsorship_committee || { id: null, name: '' };
+        form.author_details.sponsorship_committee.id = selectedRegistry.id;
+        form.author_details.sponsorship_committee.name = selectedRegistry.name;
+
+        form.author_details.committee_members = selectedRegistry.members.map((m: any) => ({
+            id: m.id,
+            pmis_id: m.pmis_id,
+            name: m.name
+        }));
+
+        // Ensure UI slots are filled up to fixed 4 entries
+        while (form.author_details.committee_members.length < 4) {
+            form.author_details.committee_members.push(createEmptyMember());
+        }
+
+        notyf.success(`Loaded members from ${selectedRegistry.name}`);
+    }
+};
+
+const getCommitteeSuggestions = (query: string) => {
+    if (!props.committeeRegistries) return [];
+    const q = (query || '').toLowerCase();
+    return props.committeeRegistries.filter((c: any) => c.name.toLowerCase().includes(q)).slice(0, 10);
+};
+
+const filteredCommitteeRegistries = computed(() => {
+    if (!sponsorshipSearchQuery.value) return (props.committeeRegistries || []).slice(0, 10);
+    return (props.committeeRegistries || []).filter((c: any) => c.name.toLowerCase().includes(sponsorshipSearchQuery.value.toLowerCase())).slice(0, 10);
+});
+
+const filteredLeadOffices = computed(() => {
+    if (!implementingSearchQuery.value) return props.departments.slice(0, 10);
+    return props.departments.filter(d => d.name.toLowerCase().includes(implementingSearchQuery.value.toLowerCase())).slice(0, 10);
+});
+
+const selectLeadOffice = (dept: any, targetForm: any = form) => {
+    targetForm.lead_office_id = dept.id;
+    if(targetForm === form) implementingSearchQuery.value = dept.name;
+    activeSuggestion.value = null;
+};
+
+const clearLeadOffice = () => {
+    form.lead_office_id = '';
+    implementingSearchQuery.value = '';
+};
+
+const getIrrLeadSuggestions = (query: string) => {
+    let list = props.departments;
+    const supportIds = irrForm.support_offices.map(o => o.id).filter(id => id !== '');
+    if (supportIds.length > 0) list = list.filter(d => !supportIds.includes(d.id));
+    if (!query) return list.slice(0, 10);
+    return list.filter(d => d.name.toLowerCase().includes(query.toLowerCase())).slice(0, 10);
+};
+
 const filteredSupportOffices = computed(() => {
     let list = props.departments;
     if (form.lead_office_id) {
@@ -307,39 +408,13 @@ const filteredSupportOffices = computed(() => {
     return list.filter(dept => dept.name.toLowerCase().includes(supportSearchQuery.value.toLowerCase()));
 });
 
-const selectLeadOffice = (dept: any, targetForm: any = form) => {
-    targetForm.lead_office_id = dept.id;
-    if(targetForm === form) implementingSearchQuery.value = dept.name;
-    activeSuggestion.value = null;
-};
-
-const deptIrrSearchQuery = ref('');
-const addIrrSupportOffice = () => { irrForm.support_offices.push({ id: '', name: '' }); };
-const removeIrrSupportOffice = (index: number) => { irrForm.support_offices.splice(index, 1); };
-
-const getIrrLeadSuggestions = (query: string) => {
-    let list = props.departments;
-    const supportIds = irrForm.support_offices.map(o => o.id).filter(id => id !== '');
-    if (supportIds.length > 0) {
-        list = list.filter(d => !supportIds.includes(d.id));
-    }
-    if (!query) return list.slice(0, 10);
-    const q = query.toLowerCase();
-    return list.filter(d => d.name.toLowerCase().includes(q)).slice(0, 10);
-};
-
 const getIrrDeptSuggestions = (query: string, currentIndex: number = -1) => {
     let list = props.departments;
-    if (irrForm.lead_office_id) {
-        list = list.filter(d => d.id !== irrForm.lead_office_id);
-    }
+    if (irrForm.lead_office_id) list = list.filter(d => d.id !== irrForm.lead_office_id);
     const selectedNames = irrForm.support_offices.map((o, idx) => idx !== currentIndex && o.name ? o.name.toLowerCase().trim() : null).filter(Boolean);
-    if (selectedNames.length > 0) {
-        list = list.filter(d => !selectedNames.includes(d.name.toLowerCase().trim()));
-    }
+    if (selectedNames.length > 0) list = list.filter(d => !selectedNames.includes(d.name.toLowerCase().trim()));
     if (!query) return list.slice(0, 10);
-    const q = query.toLowerCase();
-    return list.filter(d => d.name.toLowerCase().includes(q)).slice(0, 10);
+    return list.filter(d => d.name.toLowerCase().includes(query.toLowerCase())).slice(0, 10);
 };
 
 const selectIrrLeadOffice = (dept: any, formTarget: any) => {
@@ -365,17 +440,23 @@ const formatForInput = (dateStr: string | null) => {
 
 // --- FUNCTIONS ---
 function openAddDialog() {
-    isEdit.value = false; editingId.value = null; selectedRecord.value = null; 
+    isEdit.value = false; editingId.value = null; selectedRecord.value = null;
     activeModalTab.value = 'details'; activeAuthorTab.value = 'authors';
     activeOrdinanceExternalTab.value = 'members';
     implementingSearchQuery.value = ''; parentSearchQuery.value = ''; supportSearchQuery.value = '';
-    
-    form.reset(); form.clearErrors(); 
-    form.relationship_type = 'Partial Amendment'; 
-    form.is_active = true; 
+    selectedRegistryId.value = '';
+    sponsorshipSearchQuery.value = '';
+
+    form.reset(); form.clearErrors();
+    form.relationship_type = 'Partial Amendment';
+    form.is_active = true;
     form.author_details = defaultAuthorDetails();
     form.support_office_ids = [];
-    form.external_institutions = { members: [''], ngos: [''], others: [''] };
+    form.external_institutions = {
+        members: Array.from({ length: 4 }, createEmptyMember),
+        ngos: Array.from({ length: 4 }, createEmptyMember),
+        others: Array.from({ length: 4 }, createEmptyMember)
+    };
 
     const newStatus = selectableStatuses.value.find(s => s.name === 'New');
     if (newStatus) form.status_id = newStatus.id;
@@ -384,20 +465,19 @@ function openAddDialog() {
 }
 
 function openEditDialog(ord: any) {
-    isEdit.value = true; editingId.value = ord.id; selectedRecord.value = ord; 
+    isEdit.value = true; editingId.value = ord.id; selectedRecord.value = ord;
     activeModalTab.value = 'details'; activeAuthorTab.value = 'authors';
-    activeOrdinanceExternalTab.value = 'members'; // Reset tab to members by default
+    activeOrdinanceExternalTab.value = 'members';
     supportSearchQuery.value = '';
+    selectedRegistryId.value = '';
     form.clearErrors();
-    
+
     form.ordinance_number = ord.ordinance_number;
     form.title = ord.title;
-    form.subject_matter = ord.subject_matter || ''; 
-    
+    form.subject_matter = ord.subject_matter || '';
     form.date_approved = formatForInput(ord.date_approved);
     form.effectivity_date = formatForInput(ord.effectivity_date);
     form.date_enacted = formatForInput(ord.date_enacted);
-    
     form.presiding_officer = ord.presiding_officer || '';
     form.attested_by = ord.attested_by || '';
     form.approved_by = ord.approved_by || '';
@@ -406,39 +486,63 @@ function openEditDialog(ord: any) {
     form.amends_ordinance_id = ord.amends_ordinance_id || '';
     form.relationship_type = ord.relationship_type || 'Partial Amendment';
     form.remarks = ord.remarks || '';
-    
+
     if (ord.amends_ordinance_id) {
         const parent = props.existing_ordinances.find(o => o.id === ord.amends_ordinance_id);
         parentSearchQuery.value = parent ? `${parent.ordinance_number} - ${parent.title}` : '';
     } else { parentSearchQuery.value = ''; }
 
-    const a = ord.author_details || defaultAuthorDetails();
-    a.co_authors = parseFixed4Members(a.co_authors); 
-    a.committee_members = parseFixed4Members(a.committee_members); 
-    a.is_primary_author = a.is_primary_author !== false; 
-    form.author_details = a;
+    const a = defaultAuthorDetails();
+    const e = {
+        members: Array.from({ length: 4 }, createEmptyMember),
+        ngos: Array.from({ length: 4 }, createEmptyMember),
+        others: Array.from({ length: 4 }, createEmptyMember)
+    };
 
-    // 🚀 Robust check for external institutions format migration
-    try {
-        const raw = ord.external_institutions;
-        if (Array.isArray(raw)) {
-            form.external_institutions = {
-                members: parseFixed4Members(raw),
-                ngos: [''],
-                others: ['']
-            };
-        } else {
-            const ei = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-            form.external_institutions = {
-                members: parseFixed4Members(ei.members || []),
-                ngos: parseFixed4Members(ei.ngos || []),
-                others: parseFixed4Members(ei.others || [])
-            };
+    if (ord.committees && ord.committees.length > 0) {
+        const committee = ord.committees.find((c: any) => c.type === 'ordinance_sponsors');
+        if (committee && committee.members) {
+            let coAuthorIdx = 0, commMemberIdx = 0, extMemberIdx = 0, ngoIdx = 0, otherIdx = 0;
+            const formatMember = (m: any) => ({ id: m.id, pmis_id: m.pmis_id, name: m.name });
+
+            committee.members.forEach((m: any) => {
+                const role = m.pivot.role;
+                const memberObj = formatMember(m);
+
+                if (role === 'Primary Author' || role === 'Introduced By') {
+                    a.introduced_by = memberObj;
+                    a.is_primary_author = role === 'Primary Author';
+                }
+                else if (role === 'Committee Chairman') a.committee_chairmanship = memberObj;
+                else if (role === 'Co-Author') a.co_authors[coAuthorIdx++] = memberObj;
+                else if (role === 'Committee Member') a.committee_members[commMemberIdx++] = memberObj;
+                else if (role === 'External Member') e.members[extMemberIdx++] = memberObj;
+                else if (role === 'NGO Partner') e.ngos[ngoIdx++] = memberObj;
+                else if (role === 'Other Organization') e.others[otherIdx++] = memberObj;
+            });
+
+            // If this committee is linked to a registry, preselect it so the sponsorship input shows the registry name
+                    if (committee.registry_id) {
+                        selectedRegistryId.value = committee.registry_id;
+                        form.selected_registry_id = committee.registry_id;
+                        const reg = props.committeeRegistries.find((r: any) => r.id == committee.registry_id);
+                        if (reg) {
+                            a.sponsorship_committee.id = reg.id;
+                            a.sponsorship_committee.name = reg.name;
+                            sponsorshipSearchQuery.value = reg.name;
+
+                            // Prefer registry members for the committee members list when a registry is linked
+                            if (reg.members && reg.members.length > 0) {
+                                a.committee_members = reg.members.map((m: any) => ({ id: m.id, pmis_id: m.pmis_id, name: m.name }));
+                                while (a.committee_members.length < 4) a.committee_members.push(createEmptyMember());
+                            }
+                        }
+                    }
         }
-    } catch (e) {
-        console.error("Error parsing external institutions:", e);
-        form.external_institutions = { members: [''], ngos: [''], others: [''] };
     }
+
+    form.author_details = a;
+    form.external_institutions = e;
 
     const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
@@ -446,73 +550,117 @@ function openEditDialog(ord: any) {
 
     const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
     form.support_office_ids = supports.map((s:any) => s.id);
-        
+
     form.file = null; showDialog.value = true;
 }
 
+function handleFileChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+        form.file = target.files[0];
+    }
+}
+
+// 🚀 FIXED: Using FormData to handle both Objects AND Files properly!
 function submitForm() {
+    const url = isEdit.value && editingId.value ? route('ordinances.update', editingId.value) : route('ordinances.store');
+    const method = isEdit.value ? 'post' : 'post'; // Use post, rely on _method: PUT
+
     form.transform((data) => {
-        const transformed = JSON.parse(JSON.stringify(data));
+        const transformed = new FormData();
         
-        transformed.file = data.file; 
-        transformed.author_details.primary_author = transformed.author_details.is_primary_author ? transformed.author_details.introduced_by : null;
-        
-        transformed.author_details.co_authors = data.author_details.co_authors.filter((v: string) => v.trim() !== '');
-        transformed.author_details.committee_members = data.author_details.committee_members.filter((v: string) => v.trim() !== '');
-        
-        transformed.external_institutions = {
-            members: data.external_institutions.members.filter((v: string) => v.trim() !== ''),
-            ngos: data.external_institutions.ngos.filter((v: string) => v.trim() !== ''),
-            others: data.external_institutions.others.filter((v: string) => v.trim() !== '')
+        const filterEmpty = (arr: any[]) => arr.filter(m => m && m.name && m.name.trim() !== '');
+
+        // Manually format the JSON structures so they survive FormData serialization
+        const cleanAuthorDetails = {
+            is_primary_author: data.author_details.is_primary_author,
+            introduced_by: data.author_details.introduced_by,
+            primary_author: data.author_details.is_primary_author ? data.author_details.introduced_by : null,
+            committee_chairmanship: data.author_details.committee_chairmanship,
+            sponsorship_committee: data.author_details.sponsorship_committee || { id: null, name: '' },
+            selected_registry_id: data.selected_registry_id || null,
+            co_authors: filterEmpty(data.author_details.co_authors),
+            committee_members: filterEmpty(data.author_details.committee_members)
         };
-        
-        if(isEdit.value) transformed._method = 'PUT';
+
+        const cleanExternal = {
+            members: filterEmpty(data.external_institutions.members),
+            ngos: filterEmpty(data.external_institutions.ngos),
+            others: filterEmpty(data.external_institutions.others)
+        };
+
+        // Append basic data
+        for (let key in data) {
+            if (key === 'file' && data.file) {
+                transformed.append('file', data.file);
+            } else if (key === 'author_details') {
+                transformed.append('author_details', JSON.stringify(cleanAuthorDetails));
+            } else if (key === 'external_institutions') {
+                transformed.append('external_institutions', JSON.stringify(cleanExternal));
+            } else if (key === 'support_office_ids') {
+                data.support_office_ids.forEach((id: any) => transformed.append('support_office_ids[]', id));
+            } else if (data[key as keyof typeof data] !== null && data[key as keyof typeof data] !== undefined) {
+                transformed.append(key, String(data[key as keyof typeof data]));
+            }
+        }
+
+        if (isEdit.value) transformed.append('_method', 'PUT');
+
+        // (debug flag removed)
+
         return transformed;
-    }).post(isEdit.value && editingId.value ? route('ordinances.update', editingId.value) : route('ordinances.store'), {
-        onSuccess: () => { showDialog.value = false; form.reset(); },
+    }).post(url, {
+        forceFormData: true,
+        onSuccess: () => { showDialog.value = false; form.reset(); notyf.success('Ordinance saved successfully.');},
         onError: () => { notyf.error('Please check the form for errors.'); }
     });
 }
 
-// --- IRR FUNCTIONS ---
-const irrStatuses = ['Active', 'On-hold', 'Dropped']; 
+// ... (IRR Functions remain completely unchanged below here) ...
+const irrStatuses = ['Active', 'On-hold', 'Dropped'];
+
+const parseFixed4MemberObjects = (rawArray: any[]) => {
+    const arr = Array.isArray(rawArray) ? rawArray : [];
+    const parsed = arr.map(item => {
+        if (typeof item === 'string') return { id: null, pmis_id: null, name: item };
+        if (typeof item === 'object' && item !== null) return { id: item.id || null, pmis_id: item.pmis_id || null, name: item.name || '' };
+        return createEmptyMember();
+    }).filter(m => m.name.trim() !== '');
+
+    while (parsed.length < 4) parsed.push(createEmptyMember());
+    return parsed.slice(0, 4);
+};
 
 function openIrrDialog(ord: any) {
     selectedRecord.value = ord;
     irrForm.reset();
     irrForm.clearErrors();
-    activeIrrExternalTab.value = 'members'; // Reset to default tab
-    
+    activeIrrExternalTab.value = 'members';
+
     const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
     irrForm.lead_office_id = lead ? lead.id : '';
     deptIrrSearchQuery.value = lead ? lead.name : '';
 
     const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
-    irrForm.support_offices = supports.length > 0 
-        ? supports.map((s:any) => ({ id: s.id, name: s.name })) 
+    irrForm.support_offices = supports.length > 0
+        ? supports.map((s:any) => ({ id: s.id, name: s.name }))
         : [{ id: '', name: '' }];
 
-    const irr = ord.implementing_rules?.[0]; 
-
+    const irr = ord.implementing_rules?.[0];
     try {
-        const raw = irr ? irr.external_institutions : ord.external_institutions;
-        if (Array.isArray(raw)) {
+        const raw = irr ? irr.external_institutions : null;
+        if (raw) {
+            const ei = typeof raw === 'string' ? JSON.parse(raw) : raw;
             irrForm.external_institutions = {
-                members: parseFixed4Members(raw),
-                ngos: [''],
-                others: ['']
+                members: parseFixed4MemberObjects(ei.members),
+                ngos: parseFixed4MemberObjects(ei.ngos),
+                others: parseFixed4MemberObjects(ei.others)
             };
         } else {
-            const ei = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-            irrForm.external_institutions = {
-                members: parseFixed4Members(ei.members || []),
-                ngos: parseFixed4Members(ei.ngos || []),
-                others: parseFixed4Members(ei.others || [])
-            };
+             irrForm.external_institutions = defaultIrrExternalInstitutions();
         }
-    } catch(e) { 
-        console.error("Error parsing IRR external institutions", e); 
-        irrForm.external_institutions = { members: [''], ngos: [''], others: [''] };
+    } catch(e) {
+        irrForm.external_institutions = defaultIrrExternalInstitutions();
     }
 
     showIrrDialog.value = true;
@@ -524,17 +672,17 @@ function submitIrrForm() {
             ...data,
             support_offices: data.support_offices.map(o => o.id).filter(id => id !== ''),
             external_institutions: {
-                members: data.external_institutions.members.filter((e: string) => e.trim() !== ''),
-                ngos: data.external_institutions.ngos.filter((e: string) => e.trim() !== ''),
-                others: data.external_institutions.others.filter((e: string) => e.trim() !== '')
+                members: data.external_institutions.members.filter((e: any) => e.name && e.name.trim() !== ''),
+                ngos: data.external_institutions.ngos.filter((e: any) => e.name && e.name.trim() !== ''),
+                others: data.external_institutions.others.filter((e: any) => e.name && e.name.trim() !== '')
             }
         };
     }).post(route('ordinance.irr.store', selectedRecord.value.id), {
-        forceFormData: true, 
-        onSuccess: () => { 
-            showIrrDialog.value = false; 
-            irrForm.reset(); 
-            notyf.success('IRR Added Successfully'); 
+        forceFormData: true,
+        onSuccess: () => {
+            showIrrDialog.value = false;
+            irrForm.reset();
+            notyf.success('IRR Added Successfully');
         },
     });
 }
@@ -553,14 +701,23 @@ function submitDisableIrr() {
 
 const formatDate = (dateString: string | null) => dateString ? new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 const formatAuditDate = (date: string) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const getAuthorLabel = (ord: any) => (ord.author_details && ord.author_details.primary_author) ? ord.author_details.primary_author : 'City Council';
-const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'lead')?.name || '—';
-const handleFileChange = (e: Event) => { const target = e.target as HTMLInputElement; if (target.files && target.files[0]) form.file = target.files[0]; };
 
+const getAuthorLabel = (ord: any) => {
+    if (ord.committees && ord.committees.length > 0) {
+        const committee = ord.committees.find((c: any) => c.type === 'ordinance_sponsors');
+        if (committee && committee.members) {
+            const author = committee.members.find((m: any) => m.pivot.role === 'Primary Author' || m.pivot.role === 'Introduced By');
+            if (author) return author.name;
+        }
+    }
+    return 'City Council';
+};
+
+const getLeadOffice = (depts: any[]) => depts.find(d => d.pivot.role === 'lead')?.name || '—';
 const getChangedFields = (audit: any) => {
     if (audit.action === 'Created') return 'Initial Record Created';
     if (audit.action === 'Deleted') return 'Record Deleted';
-    let newVals = audit.new_values; 
+    let newVals = audit.new_values;
     if (typeof newVals === 'string') { try { newVals = JSON.parse(newVals); } catch (e) { return 'Updated details'; } }
     if (newVals) {
         const changes = Object.keys(newVals).filter(key => key !== 'updated_at').map(key => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
@@ -578,14 +735,14 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl bg-gray-50/50 p-4 md:p-8">
-            
+
             <div class="flex flex-col items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm xl:flex-row flex-wrap">
                 <div class="relative w-full md:max-w-md xl:flex-1">
                     <Search class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-gray-400" />
                     <input v-model="searchTerm" type="text" placeholder="Search Ord. No. or Title..." class="block w-full rounded-lg border border-gray-300 bg-gray-50 hover:bg-white focus:bg-white py-2 pr-10 pl-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                     <button v-if="searchTerm || filterYear !== 'all' || filterActive !== 'all'" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors" title="Clear Filters">×</button>
                 </div>
-                
+
                 <div class="flex items-center justify-between xl:justify-end gap-4 w-full xl:w-auto flex-wrap sm:flex-nowrap">
                     <div class="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 flex-1 sm:flex-none">
                         <Filter class="w-4 h-4 text-gray-400 ml-2 hidden sm:block" />
@@ -594,9 +751,9 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                             <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
                         </select>
                         <select v-model="filterActive" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 w-full sm:w-auto outline-none">
-                            <option value="all">Statuses</option>
-                            <option value="active">Active Only</option>
-                            <option value="inactive">Inactive Only</option>
+                            <option value="all">Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
                         </select>
                     </div>
 
@@ -620,10 +777,10 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <template v-if="isLoading"><tr v-for="n in 5" :key="n" class="animate-pulse"><td colspan="5" class="px-6 py-4"><div class="h-4 bg-gray-100 rounded w-full"></div></td></tr></template>
-                            
+
                             <template v-else-if="ordinances.data.length > 0">
-                                <tr v-for="ord in ordinances.data" :key="ord.id" class="transition-colors border-l-4" :class="ord.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/60 opacity-80 border-red-400'">
-                                    
+                                <tr v-for="ord in ordinances.data" :key="ord.id" class="transition-colors border-l-4 border-b border-gray-200" :class="ord.is_active ? 'hover:bg-gray-50 border-l-transparent' : 'bg-gray-50/60 opacity-80 border-l-red-400'">
+
                                     <td class="px-6 py-4 align-top">
                                         <div class="flex flex-col gap-1">
                                             <span class="font-mono font-bold text-blue-600 text-base">{{ ord.ordinance_number }}</span>
@@ -637,10 +794,10 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             </div>
                                         </div>
                                     </td>
-                                    
+
                                     <td class="px-6 py-4 align-top">
                                         <div class="text-gray-900 font-semibold mb-1 leading-snug">{{ ord.title }}</div>
-                                        
+
                                         <div class="text-[10px] text-gray-500 font-medium uppercase mb-2 flex items-center gap-1">
                                             <UserCheck class="w-3 h-3" /> Author: {{ getAuthorLabel(ord) }}
                                         </div>
@@ -666,7 +823,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             <span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{{ ord.implementing_rules.length }} IRRs Attached</span>
                                         </div>
                                     </td>
-                                    
+
                                     <td class="px-6 py-4 text-center align-middle">
                                         <div class="flex flex-col items-center justify-center gap-2">
                                             <div class="flex items-center gap-2">
@@ -698,7 +855,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar" @click="activeSuggestion = null; showParentDropdown = false">
-                        
+
                         <div class="flex items-center justify-between mb-6 border-b pb-4">
                             <div>
                                 <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-blue-600" /> {{ isEdit ? 'Edit Ordinance' : 'Encode Ordinance' }}</h2>
@@ -730,10 +887,10 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         </div>
 
                         <form v-else @submit.prevent="submitForm" class="space-y-8">
-                            
+
                             <div class="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-5 relative">
                                 <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">1. Metadata & Status</div>
-                                
+
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5 pt-2">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Ordinance Number <span class="text-red-500">*</span></label>
@@ -765,7 +922,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             <Info class="w-4 h-4" /> Ordinance Superseded / Amended
                                         </div>
                                         <p class="text-sm text-blue-900">
-                                            This ordinance has been affected by: 
+                                            This ordinance has been affected by:
                                             <span class="font-bold bg-white px-2 py-0.5 rounded border border-blue-200 ml-1">
                                                 {{ selectedRecord.amendments[0].ordinance_number }}
                                             </span>
@@ -825,24 +982,68 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
+                                    <div class="relative">
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Presiding Officer <span class="text-red-500">*</span></label>
-                                        <input v-model="form.presiding_officer" type="text" placeholder="e.g., City Vice Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" required />
+                                        <input v-model="form.presiding_officer" type="text"
+                                            @focus.stop="activeSuggestion = 'presiding_officer'"
+                                            @click.stop="activeSuggestion = 'presiding_officer'"
+                                            @input="activeSuggestion = 'presiding_officer'"
+                                            placeholder="e.g., City Vice Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" required />
+
+                                        <div v-if="activeSuggestion === 'presiding_officer' && getSuggestions(form.presiding_officer, null, 'presiding_officer').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <div v-for="(person, idx) in getSuggestions(form.presiding_officer, null, 'presiding_officer')" :key="idx" @mousedown.prevent="selectPerson('presiding_officer', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                <div class="text-sm font-bold text-gray-800">
+                                                    {{ person.name }}
+                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                </div>
+                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
+
+                                    <div class="relative">
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Attested By</label>
-                                        <input v-model="form.attested_by" type="text" placeholder="e.g., SP Secretary" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+                                        <input v-model="form.attested_by" type="text"
+                                            @focus.stop="activeSuggestion = 'attested_by'"
+                                            @click.stop="activeSuggestion = 'attested_by'"
+                                            @input="activeSuggestion = 'attested_by'"
+                                            placeholder="e.g., SP Secretary" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+
+                                        <div v-if="activeSuggestion === 'attested_by' && getSuggestions(form.attested_by, null, 'attested_by').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <div v-for="(person, idx) in getSuggestions(form.attested_by, null, 'attested_by')" :key="idx" @mousedown.prevent="selectPerson('attested_by', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                <div class="text-sm font-bold text-gray-800">
+                                                    {{ person.name }}
+                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                </div>
+                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
+
+                                    <div class="relative">
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Approved By</label>
-                                        <input v-model="form.approved_by" type="text" placeholder="e.g., City Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+                                        <input v-model="form.approved_by" type="text"
+                                            @focus.stop="activeSuggestion = 'approved_by'"
+                                            @click.stop="activeSuggestion = 'approved_by'"
+                                            @input="activeSuggestion = 'approved_by'"
+                                            placeholder="e.g., City Mayor" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+
+                                        <div v-if="activeSuggestion === 'approved_by' && getSuggestions(form.approved_by, null, 'approved_by').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <div v-for="(person, idx) in getSuggestions(form.approved_by, null, 'approved_by')" :key="idx" @mousedown.prevent="selectPerson('approved_by', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                <div class="text-sm font-bold text-gray-800">
+                                                    {{ person.name }}
+                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                </div>
+                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-6 relative animate-in fade-in duration-300">
                                 <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">2. Authorship & Sponsorship</div>
-                                
+
                                 <div class="flex items-center gap-6 border-b border-gray-200 pt-2">
                                     <button type="button" @click="activeAuthorTab = 'authors'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'authors' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Authorship</button>
                                     <button type="button" @click="activeAuthorTab = 'committees'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeAuthorTab === 'committees' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Sponsorship Committee</button>
@@ -850,7 +1051,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                                 <div v-show="activeAuthorTab === 'authors'" class="animate-in fade-in duration-300">
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
-                                        
+
                                         <div>
                                             <div class="mb-1 w-fit">
                                                 <select v-model="form.author_details.is_primary_author" class="block text-xs font-bold text-blue-800 uppercase tracking-widest bg-transparent border-0 px-0 py-0 pr-5 focus:ring-0 cursor-pointer hover:text-blue-900 transition-colors">
@@ -859,15 +1060,15 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                 </select>
                                             </div>
                                             <div class="relative w-full">
-                                                <input 
-                                                    v-model="form.author_details.introduced_by" 
+                                                <input
+                                                    v-model="form.author_details.introduced_by.name"
                                                     @focus.stop="activeSuggestion = 'introduced'"
                                                     @click.stop="activeSuggestion = 'introduced'"
                                                     @input="activeSuggestion = 'introduced'"
                                                     type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
-                                                
-                                                <div v-if="activeSuggestion === 'introduced' && getSuggestions(form.author_details.introduced_by, 'introduced_by').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.introduced_by, 'introduced_by')" :key="idx" @mousedown.prevent="selectPerson('introduced_by', person.name)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+
+                                                <div v-if="activeSuggestion === 'introduced' && getSuggestions(form.author_details.introduced_by.name, null, 'introduced_by').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.introduced_by.name, null, 'introduced_by')" :key="idx" @mousedown.prevent="selectPerson('introduced_by', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                         <div class="text-sm font-bold text-gray-800">
                                                             {{ person.name }}
                                                             <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
@@ -884,15 +1085,15 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                 <div v-for="(member, index) in form.author_details.co_authors" :key="'ca_'+index" class="relative flex items-center gap-2">
                                                     <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                                     <div class="relative flex-1">
-                                                        <input 
-                                                            v-model="form.author_details.co_authors[index]" 
+                                                        <input
+                                                            v-model="member.name"
                                                             @focus.stop="activeSuggestion = 'co_author_' + index"
                                                             @click.stop="activeSuggestion = 'co_author_' + index"
                                                             @input="activeSuggestion = 'co_author_' + index"
                                                             type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
-                                                        
-                                                        <div v-if="activeSuggestion === 'co_author_' + index && getSuggestions(form.author_details.co_authors[index], 'co_authors', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.co_authors[index], 'co_authors', index)" :key="idx" @mousedown.prevent="selectPerson('co_authors', person.name, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+
+                                                        <div v-if="activeSuggestion === 'co_author_' + index && getSuggestions(member.name, null, 'co_authors', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                            <div v-for="(person, idx) in getSuggestions(member.name, null, 'co_authors', index)" :key="idx" @mousedown.prevent="selectPerson('co_authors', person, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                                 <div class="text-sm font-bold text-gray-800">
                                                                     {{ person.name }}
                                                                     <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
@@ -915,29 +1116,34 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </div>
 
                                 <div v-show="activeAuthorTab === 'committees'" class="animate-in fade-in duration-300">
+                                    <!-- Registry select moved next to Sponsorship Committee input below -->
+
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
-                                        
                                         <div>
                                             <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Sponsorship Committee</label>
-                                            <div class="relative w-full">
-                                                <input 
-                                                    v-model="form.author_details.committee_chairmanship" 
-                                                    @focus.stop="activeSuggestion = 'committee'"
-                                                    @click.stop="activeSuggestion = 'committee'"
-                                                    @input="activeSuggestion = 'committee'"
-                                                    type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="e.g. Committee on Tech..." />
-                                                
-                                                <div v-if="activeSuggestion === 'committee' && getSuggestions(form.author_details.committee_chairmanship, 'committee').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.author_details.committee_chairmanship, 'committee')" :key="idx" @mousedown.prevent="selectPerson('committee', person.name)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
-                                                        <div class="text-sm font-bold text-gray-800">
-                                                            {{ person.name }}
-                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                <div class="relative w-full flex items-center gap-2">
+                                                    <div class="relative flex-1">
+                                                        <div class="relative">
+                                                            <input
+                                                                v-model="sponsorshipSearchQuery"
+                                                                @focus.stop="activeSuggestion = 'sponsorship_committee'"
+                                                                @click.stop="activeSuggestion = 'sponsorship_committee'"
+                                                                @input="activeSuggestion = 'sponsorship_committee'; form.selected_registry_id = ''"
+                                                                type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none bg-white" placeholder="Search and select sponsorship committee..." />
+
+                                                            <button v-if="(form.author_details.sponsorship_committee && form.author_details.sponsorship_committee.name) || sponsorshipSearchQuery" @click.prevent="clearSponsorship" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition">
+                                                                <XCircle class="w-4 h-4" />
+                                                            </button>
+
+                                                            <div v-if="activeSuggestion === 'sponsorship_committee' && filteredCommitteeRegistries.length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(c, idx) in filteredCommitteeRegistries" :key="c.id" @mousedown.prevent="selectRegistry(c)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-medium text-gray-800">
+                                                                    <div class="text-sm font-medium text-gray-800">{{ c.name }}</div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
 
                                         <div>
                                             <label class="mb-2 block text-xs font-bold text-blue-800 uppercase">Committee Members</label>
@@ -945,15 +1151,15 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                 <div v-for="(member, index) in form.author_details.committee_members" :key="'cm_'+index" class="relative flex items-center gap-2">
                                                     <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                                     <div class="relative flex-1">
-                                                        <input 
-                                                            v-model="form.author_details.committee_members[index]" 
+                                                        <input
+                                                            v-model="member.name"
                                                             @focus.stop="activeSuggestion = 'committee_members_' + index"
                                                             @click.stop="activeSuggestion = 'committee_members_' + index"
                                                             @input="activeSuggestion = 'committee_members_' + index"
                                                             type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
-                                                        
-                                                        <div v-if="activeSuggestion === 'committee_members_' + index && getSuggestions(form.author_details.committee_members[index], 'committee_members', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(form.author_details.committee_members[index], 'committee_members', index)" :key="idx" @mousedown.prevent="selectPerson('committee_members', person.name, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+
+                                                        <div v-if="activeSuggestion === 'committee_members_' + index && getSuggestions(member.name, null, 'committee_members', index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                            <div v-for="(person, idx) in getSuggestions(member.name, null, 'committee_members', index)" :key="idx" @mousedown.prevent="selectPerson('committee_members', person, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
                                                                 <div class="text-sm font-bold text-gray-800">
                                                                     {{ person.name }}
                                                                     <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
@@ -978,18 +1184,23 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                             <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-6 relative">
                                 <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">3. Implementing Offices</div>
-                                
+
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
                                     <div>
                                         <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Lead Implementing Office</label>
                                         <div class="relative w-full">
-                                            <input 
+                                            <input
                                                 type="text" v-model="implementingSearchQuery"
                                                 @focus.stop="activeSuggestion = 'lead_office'" @click.stop="activeSuggestion = 'lead_office'"
                                                 @input="activeSuggestion = 'lead_office'; form.lead_office_id = ''"
                                                 class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 pr-8 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." />
-                                            <div v-if="activeSuggestion === 'lead_office' && getDeptSuggestions(implementingSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                <div v-for="dept in getDeptSuggestions(implementingSearchQuery)" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
+
+                                            <button v-if="form.lead_office_id || implementingSearchQuery" @click.prevent="clearLeadOffice" type="button" class="absolute right-2 top-[10px] text-gray-400 hover:text-gray-600 transition">
+                                                <XCircle class="w-4 h-4" />
+                                            </button>
+
+                                            <div v-if="activeSuggestion === 'lead_office' && filteredLeadOffices.length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="dept in filteredLeadOffices" :key="dept.id" @mousedown.prevent="selectLeadOffice(dept, form)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
                                                     {{ dept.name }}
                                                 </div>
                                             </div>
@@ -1016,7 +1227,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 
                                 <div class="border-t border-blue-100 pt-5 mt-5">
                                     <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">External Institutions / Partners</label>
-                                    
+
                                     <div class="flex border-b border-gray-200 mb-4">
                                         <button type="button" @click="activeOrdinanceExternalTab = 'members'" :class="activeOrdinanceExternalTab === 'members' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Members</button>
                                         <button type="button" @click="activeOrdinanceExternalTab = 'ngos'" :class="activeOrdinanceExternalTab === 'ngos' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">NGO's</button>
@@ -1024,18 +1235,31 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     </div>
 
                                     <div class="space-y-2">
-                                        <div v-for="(name, index) in form.external_institutions[activeOrdinanceExternalTab]" :key="activeOrdinanceExternalTab + index" class="relative flex items-center gap-2">
+                                        <div v-for="(member, index) in form.external_institutions[activeOrdinanceExternalTab]" :key="activeOrdinanceExternalTab + index" class="relative flex items-center gap-2">
                                             <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
                                             <div class="relative flex-1">
-                                                <input v-model="form.external_institutions[activeOrdinanceExternalTab][index]" type="text" 
+                                                <input v-model="member.name" type="text"
+                                                    @focus.stop="activeSuggestion = 'external_' + activeOrdinanceExternalTab + '_' + index"
+                                                    @click.stop="activeSuggestion = 'external_' + activeOrdinanceExternalTab + '_' + index"
+                                                    @input="activeSuggestion = 'external_' + activeOrdinanceExternalTab + '_' + index"
                                                     class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type name..." />
+
+                                                <div v-if="activeSuggestion === 'external_' + activeOrdinanceExternalTab + '_' + index && getSuggestions(member.name, 'External', 'external_' + activeOrdinanceExternalTab, index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                    <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'external_' + activeOrdinanceExternalTab, index)" :key="idx" @mousedown.prevent="selectPerson('external_' + activeOrdinanceExternalTab, person, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                        <div class="text-sm font-bold text-gray-800">
+                                                            {{ person.name }}
+                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <button type="button" @click="form.external_institutions[activeOrdinanceExternalTab].splice(index, 1)" 
+                                            <button type="button" @click="removeMember('external_' + activeOrdinanceExternalTab, index)"
                                                     class="text-red-300 hover:text-red-500 transition-colors" v-if="form.external_institutions[activeOrdinanceExternalTab].length > 1">
                                                 <XCircle class="w-4 h-4" />
                                             </button>
                                         </div>
-                                        <button type="button" @click="form.external_institutions[activeOrdinanceExternalTab].push('')" 
+                                        <button type="button" @click="addMember('external_' + activeOrdinanceExternalTab)"
                                                 class="mt-2 text-[10px] font-bold uppercase text-blue-600 hover:text-blue-800 ml-5 transition-colors">
                                             + Add Row
                                         </button>
@@ -1045,11 +1269,11 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
 
                             <div class="pt-4 border-t pt-5">
                                 <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Document (PDF)</label>
-                                <input type="file" @change="(e) => form.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+                                <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
                                 <p class="mt-1 text-[10px] text-gray-400 italic">{{ isEdit ? 'Leave empty to keep existing PDF.' : 'Optional: Upload the signed PDF.' }}</p>
                             </div>
 
-                            <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
+                            <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100 mt-8">
                                 <button type="button" @click="showDialog = false" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors">Cancel</button>
                                 <button type="submit" :disabled="form.processing" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-70">
                                     <CheckCircle2 v-if="!form.processing" class="w-4 h-4" /> {{ form.processing ? 'Saving...' : 'Save Record' }}
@@ -1060,171 +1284,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                 </div>
             </Transition>
 
-            <Transition name="fade">
-                <div v-if="showIrrDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar" @click="activeSuggestion = null">
-                        
-                        <div class="flex items-center justify-between mb-6 border-b pb-4">
-                            <div>
-                                <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                    <Paperclip class="w-5 h-5 text-blue-600" /> Upload IRR
-                                </h2>
-                                <p class="text-xs text-gray-500 mt-1">For Ordinance: {{ selectedRecord?.ordinance_number }}</p>
-                            </div>
-                            <button @click="showIrrDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
-                        </div>
-                        
-                        <form @submit.prevent="submitIrrForm" class="space-y-6">
-                            
-                            <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-5 relative">
-                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">IRR Implementing Offices</div>
-                                
-                                <div class="pt-2">
-                                    <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Lead Office <span class="text-red-500">*</span></label>
-                                    <div class="relative w-full">
-                                        <input 
-                                            type="text" v-model="deptIrrSearchQuery"
-                                            @focus.stop="activeSuggestion = 'irr_lead_office'" @click.stop="activeSuggestion = 'irr_lead_office'"
-                                            @input="activeSuggestion = 'irr_lead_office'; irrForm.lead_office_id = ''"
-                                            class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." required />
-                                        
-                                        <div v-if="activeSuggestion === 'irr_lead_office' && getIrrLeadSuggestions(deptIrrSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                            <div v-for="dept in getIrrLeadSuggestions(deptIrrSearchQuery)" :key="dept.id" @mousedown.prevent="selectIrrLeadOffice(dept, irrForm)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
-                                                {{ dept.name }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="border-t border-blue-100 pt-4">
-                                    <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">Supporting Offices</label>
-                                    <div class="space-y-2">
-                                        <div v-for="(office, index) in irrForm.support_offices" :key="'irr_so_'+index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
-                                            <div class="relative flex-1">
-                                                <input 
-                                                    v-model="irrForm.support_offices[index].name" 
-                                                    @focus.stop="activeSuggestion = 'irr_support_office_' + index"
-                                                    @click.stop="activeSuggestion = 'irr_support_office_' + index"
-                                                    @input="activeSuggestion = 'irr_support_office_' + index; irrForm.support_offices[index].id = ''"
-                                                    type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search department..." />
-                                                
-                                                <div v-if="activeSuggestion === 'irr_support_office_' + index && getIrrDeptSuggestions(irrForm.support_offices[index].name, index).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="dept in getIrrDeptSuggestions(irrForm.support_offices[index].name, index)" :key="dept.id" @mousedown.prevent="selectIrrSupportOffice(dept, index)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm font-medium text-gray-800">
-                                                        {{ dept.name }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <button @click="removeIrrSupportOffice(index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="irrForm.support_offices.length > 1">
-                                                <XCircle class="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <button type="button" @click="addIrrSupportOffice()" class="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                        <Plus class="w-3.5 h-3.5" /> Add Support Office
-                                    </button>
-                                </div>
-                                
-                                <div class="border-t border-blue-100 pt-4">
-                                    <label class="mb-3 block text-xs font-bold text-blue-800 uppercase">External Institutions / Partners</label>
-                                    
-                                    <div class="flex border-b border-gray-200 mb-4">
-                                        <button type="button" @click="activeIrrExternalTab = 'members'" :class="activeIrrExternalTab === 'members' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Members</button>
-                                        <button type="button" @click="activeIrrExternalTab = 'ngos'" :class="activeIrrExternalTab === 'ngos' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">NGO's</button>
-                                        <button type="button" @click="activeIrrExternalTab = 'others'" :class="activeIrrExternalTab === 'others' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Other Organizations</button>
-                                    </div>
-
-                                    <div class="space-y-2">
-                                        <div v-for="(name, index) in irrForm.external_institutions[activeIrrExternalTab]" :key="activeIrrExternalTab + index" class="relative flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ index + 1 }}.</span>
-                                            <div class="relative flex-1">
-                                                <input v-model="irrForm.external_institutions[activeIrrExternalTab][index]" type="text" 
-                                                    class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white" placeholder="Type name..." />
-                                            </div>
-                                            <button type="button" @click="irrForm.external_institutions[activeIrrExternalTab].splice(index, 1)" 
-                                                    class="text-red-300 hover:text-red-500" v-if="irrForm.external_institutions[activeIrrExternalTab].length > 1">
-                                                <XCircle class="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                        <button type="button" @click="irrForm.external_institutions[activeIrrExternalTab].push('')" 
-                                                class="mt-2 text-[10px] font-bold uppercase text-blue-600 hover:text-blue-800 ml-5">
-                                            + Add Row
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">IRR Status <span class="text-red-500">*</span></label>
-                                    <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                                        <option value="Active">Active</option>
-                                        <option value="On-hold">On-hold</option>
-                                        <option value="Dropped">Dropped</option>
-                                    </select>
-                                </div>
-                                <div class="pt-6">
-                                    <input type="file" @change="(e) => irrForm.file = (e.target as HTMLInputElement).files?.[0] || null" accept="application/pdf" required class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"/>
-                                </div>
-                            </div>
-
-                            <div v-if="selectedRecord?.implementing_rules?.length > 0" class="mt-8 border-t border-gray-100 pt-6">
-                                <h3 class="text-sm font-bold text-gray-900 mb-3">Current IRRs Linked</h3>
-                                <div class="space-y-3">
-                                    <div v-for="irr in selectedRecord.implementing_rules" :key="irr.id" class="flex items-center justify-between p-3 rounded-lg border border-gray-200" :class="irr.is_active ? 'bg-white' : 'bg-gray-50 opacity-75'">
-                                        <div class="flex items-center gap-3">
-                                            <Paperclip class="w-4 h-4 text-blue-500" />
-                                            <div>
-                                                <p class="text-xs font-bold text-gray-900">IRR Document <span v-if="!irr.is_active" class="text-red-500 ml-1">(Disabled)</span></p>
-                                                <p class="text-[10px] text-gray-500">Lead: {{ irr.lead_office?.name || 'Unknown' }}</p>
-                                                <p v-if="!irr.is_active" class="text-[10px] text-red-500 italic mt-0.5">Reason: {{ irr.disable_reason }}</p>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="text-blue-600 hover:text-blue-800 p-1.5"><Eye class="w-4 h-4" /></a>
-                                            <button v-if="irr.is_active" @click.prevent="confirmDisableIrr(irr.id)" class="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded" title="Disable IRR">
-                                                <AlertTriangle class="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
-                                <button type="button" @click="showIrrDialog = false" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors">Close</button>
-                                <button type="submit" :disabled="irrForm.processing" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-70">
-                                    <CheckCircle2 v-if="!irrForm.processing" class="w-4 h-4" /> Upload IRR
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </Transition>
-
-            <Transition name="fade">
-                <div v-if="showDisableIrrDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-md bg-white rounded-xl shadow-2xl p-6">
-                        <div class="flex items-center gap-3 mb-4 text-red-600 border-b border-gray-100 pb-3">
-                            <AlertTriangle class="w-6 h-6" />
-                            <h3 class="text-lg font-bold">Disable this IRR?</h3>
-                        </div>
-                        <p class="text-sm text-gray-600 mb-4">This will mark the IRR as inactive. Please provide a reason (e.g., "Amended by new IRR", "Superseded").</p>
-                        
-                        <form @submit.prevent="submitDisableIrr">
-                            <textarea v-model="disableIrrForm.reason" rows="3" required placeholder="Enter reason for disabling..." class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-red-500 mb-6"></textarea>
-                            
-                            <div class="flex items-center justify-end gap-3">
-                                <button type="button" @click="showDisableIrrDialog = false" class="px-4 py-2 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">Cancel</button>
-                                <button type="submit" :disabled="disableIrrForm.processing" class="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2">
-                                    <XCircle class="w-4 h-4" /> Confirm Disable
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </Transition>
-
-        </div>
+            </div>
     </AppLayout>
 </template>
 

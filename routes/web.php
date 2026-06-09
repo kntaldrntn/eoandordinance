@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\CityEmployeeController;
 use App\Http\Controllers\ClassificationController;
+use App\Http\Controllers\CommitteeMemberController;
+use App\Http\Controllers\CommitteeRegistryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EOController;
@@ -28,6 +30,10 @@ Route::middleware(['role:system_admin'])->group(function () {
         Route::resource('employees', CityEmployeeController::class);
         Route::resource('external-members', ExternalMemberController::class);
         Route::resource('classifications', ClassificationController::class);
+        Route::resource('committee-members', CommitteeMemberController::class);
+        Route::resource('committee-registries', CommitteeRegistryController::class);
+        Route::post('/committee-registries/{id}/sync', [CommitteeRegistryController::class, 'syncMembers'])
+            ->name('committee-registries.sync'); // Matches the route() call in your Vue file
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

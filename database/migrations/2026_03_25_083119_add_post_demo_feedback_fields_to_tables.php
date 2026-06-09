@@ -18,7 +18,6 @@ return new class extends Migration
         Schema::table('ordinances', function (Blueprint $table) {
             $table->text('subject_matter')->nullable()->after('title');
             // We use JSON here so we can store Primary Author, Co-Authors, and Chairmanships easily
-            $table->json('author_details')->nullable()->after('subject_matter'); 
         });
 
         // 3. Updates to Implementing Rules (IRR)
@@ -35,7 +34,7 @@ return new class extends Migration
         });
 
         Schema::table('ordinances', function (Blueprint $table) {
-            $table->dropColumn(['subject_matter', 'author_details']);
+            $table->dropColumn(['subject_matter']);
         });
 
         Schema::table('implementing_rule_and_regulations', function (Blueprint $table) {

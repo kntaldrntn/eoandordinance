@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\User;
+use App\Models\CityEmployee; // 🚀 Don't forget to import this!
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -25,13 +26,18 @@ class UserController extends Controller
         }
 
         $users = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
-        
-        // We get all departments for the "Create User" dropdown
         $departments = Department::orderBy('name')->get();
+        
+        // 🚀 Fetch employees for the suggestive search (Added pmis_id)
+        $employees = CityEmployee::where('state', 1)
+            ->select('id', 'pmis_id', 'full_name', 'position') 
+            ->orderBy('full_name')
+            ->get();
 
         return Inertia::render('users/Index', [
             'users' => $users,
             'departments' => $departments,
+            'employees' => $employees, // 🚀 Passed to Vue
             'filters' => $request->only(['search']),
             'flash' => [
                 'success' => session('success'),
@@ -43,6 +49,7 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'pmis_id' => 'nullable|integer', // 🚀 Added validation
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:' . User::class,
             'role' => ['required', Rule::in(['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only'])],
@@ -51,6 +58,7 @@ class UserController extends Controller
         ]);
 
         User::create([
+            'pmis_id' => $validated['pmis_id'] ?? null, // 🚀 Save to DB
             'name' => $validated['name'],
             'email' => $validated['email'],
             'role' => $validated['role'],
@@ -65,13 +73,13 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
+            'pmis_id' => 'nullable|integer', // 🚀 Added validation
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
             'role' => ['required', Rule::in(['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only'])],
             'department_id' => 'nullable|exists:departments,id',
         ]);
 
-        // Only update password if provided
         if ($request->filled('password')) {
             $request->validate([
                 'password' => ['confirmed', Rules\Password::defaults()]

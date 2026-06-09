@@ -143,11 +143,11 @@ class DashboardController extends Controller
             }
         }
 
-        // --- 5. RECENT ACTIVITY ---
-        $recent_eos = (clone $eoQuery)->with('status')->latest('updated_at')->take(4)->get()
+        // --- 5. RECENT ACTIVITY (Strictly Active Only) ---
+        $recent_eos = ExecutiveOrder::with('status')->where('is_active', 1)->latest('updated_at')->take(4)->get()
             ->map(fn($i) => ['id' => $i->id, 'number' => $i->eo_number, 'title' => $i->title, 'status' => $i->status ? $i->status->name : 'N/A', 'date' => $i->updated_at->diffForHumans()]);
             
-        $recent_ords = (clone $ordQuery)->with('status')->latest('updated_at')->take(4)->get()
+        $recent_ords = Ordinance::with('status')->where('is_active', 1)->latest('updated_at')->take(4)->get()
             ->map(fn($i) => ['id' => $i->id, 'number' => $i->ordinance_number, 'title' => $i->title, 'status' => $i->status ? $i->status->name : 'N/A', 'date' => $i->updated_at->diffForHumans()]);
 
         // --- 6. TOP DEPARTMENTS ---

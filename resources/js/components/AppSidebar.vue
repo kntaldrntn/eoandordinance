@@ -100,11 +100,23 @@ const settingsItems = computed(() => {
         //     roles: ['system_admin']
         // },
         {
-            title: 'External Directory',
-            href: route('external-members.index'),
+            title: 'Committee Registry',
+            href: route('committee-members.index'),
             icon: Users,
             roles: ['system_admin']
         },
+        {
+            title: 'Sponsorship Committee',
+            href: route('committee-registries.index'),
+            icon: BookUser,
+            roles: ['system_admin']
+        },
+        // {
+        //     title: 'External Directory',
+        //     href: route('external-members.index'),
+        //     icon: Users,
+        //     roles: ['system_admin']
+        // },
         {
             title: 'Classifications Management',
             href: route('classifications.index'),

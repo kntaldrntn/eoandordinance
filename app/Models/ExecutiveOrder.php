@@ -56,6 +56,12 @@ class ExecutiveOrder extends Model
     {
         return $this->hasMany(ImplementingRuleandRegulation::class);
     }
+
+    public function committees()
+    {
+        return $this->belongsToMany(Committee::class, 'eo_committee', 'eo_id', 'committee_id')
+                    ->withTimestamps();
+    }
     
     public function getPublicTimelineAttribute()
     {

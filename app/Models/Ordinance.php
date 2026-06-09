@@ -60,6 +60,12 @@ class Ordinance extends Model
         return $this->hasMany(ImplementingRuleandRegulation::class, 'ordinance_id');
     }
 
+    public function committees()
+    {
+        return $this->belongsToMany(Committee::class, 'ordinance_committee', 'ordinance_id', 'committee_id')
+                    ->withTimestamps();
+    }
+
     public function getPublicTimelineAttribute()
     {
         $timeline = collect();

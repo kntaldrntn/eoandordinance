@@ -63,7 +63,12 @@ const pieColors = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#6474
 // --- Compact ApexCharts Configurations ---
 const baseChartOptions = {
     chart: { fontFamily: 'inherit', toolbar: { show: false }, parentHeightOffset: 0 },
-    dataLabels: { enabled: false },
+    // 🚀 Turn on data labels globally for bar and line charts
+    dataLabels: { 
+        enabled: true, 
+        style: { fontSize: '10px', fontWeight: 'bold', colors: ['#1e293b'] },
+        background: { enabled: true, foreColor: '#ffffff', padding: 4, borderRadius: 4, opacity: 0.9 }
+    },
     grid: { show: true, borderColor: '#f1f5f9', strokeDashArray: 4, padding: { top: 0, right: 0, bottom: 0, left: 10 } }
 };
 
@@ -97,7 +102,14 @@ const pieOptions = (labels: string[]) => ({
     labels: labels,
     colors: pieColors,
     plotOptions: { pie: { donut: { size: '75%', labels: { show: true, name: {show: false}, value: { fontSize: '24px', fontWeight: 'bold', offsetY: 8 } } } } },
-    dataLabels: { enabled: false },
+    // 🚀 Turn on data labels for donuts and force it to show the count instead of percentages
+    dataLabels: { 
+        enabled: true,
+        formatter: function (val: number, opts: any) {
+            return opts.w.config.series[opts.seriesIndex];
+        },
+        style: { fontSize: '12px', fontWeight: 'bold' }
+    },
     stroke: { width: 0 },
     legend: { show: true, position: 'right', fontSize: '11px', markers: { radius: 12 } }
 });
@@ -159,17 +171,17 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><FileText class="w-5 h-5 text-blue-600" /> Executive Orders</h2>
                     <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
                         <select v-model="eoYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
-                            <option value="all">All Yrs</option>
+                            <option value="all">All Years</option>
                             <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
                         </select>
                         <div class="w-px h-3 bg-gray-200"></div>
                         <select v-model="eoClass" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
-                            <option value="all">All Classes</option>
+                            <option value="all">Classifications</option>
                             <option v-for="c in available_classifications" :key="c.id" :value="c.id">{{ c.name }}</option>
                         </select>
                         <div class="w-px h-3 bg-gray-200"></div>
                         <select v-model="eoActive" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
-                            <option value="all">All States</option>
+                            <option value="all">Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
                         </select>
@@ -180,7 +192,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <!-- EO Trend -->
                     <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-bold text-gray-800">Records Overview</h3>
+                            <h3 class="text-sm font-bold text-gray-800">Issuance of Executive Orders</h3>
                             <select v-model="eoTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
@@ -194,7 +206,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 
                     <!-- EO Status Donut -->
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                        <h3 class="text-sm font-bold text-gray-800 mb-2">Statuses</h3>
+                        <h3 class="text-sm font-bold text-gray-800 mb-2">Status Overview</h3>
                         <div class="flex-1 flex items-center justify-center" v-if="eo_analytics.status_data.length > 0">
                             <VueApexCharts :key="'eostat'+eo_analytics.status_data.length" type="donut" height="160" width="100%" :options="eoStatusOptions" :series="eo_analytics.status_data" />
                         </div>
@@ -232,13 +244,18 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                 </div>
             </div>
 
+            <!-- 🚀 VISUAL DIVIDER ADDED HERE -->
+            <div class="py-4">
+                <hr class="border-t border-gray-300 border-dashed" />
+            </div>
+
             <!-- ORDINANCES BENTO -->
-            <div class="space-y-4 pt-4">
+            <div class="space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-indigo-600" /> City Ordinances</h2>
                     <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
                         <select v-model="ordYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
-                            <option value="all">All Yrs</option>
+                            <option value="all">All Years</option>
                             <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
                         </select>
                         <div class="w-px h-3 bg-gray-200"></div>
@@ -249,7 +266,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                         </select>
                         <div class="w-px h-3 bg-gray-200"></div>
                         <select v-model="ordActive" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
-                            <option value="all">All States</option>
+                            <option value="all">Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
                         </select>
@@ -260,7 +277,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <!-- Ord Trend -->
                     <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-bold text-gray-800">Records Overview</h3>
+                            <h3 class="text-sm font-bold text-gray-800">Enacted City Ordinances</h3>
                             <select v-model="ordTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
@@ -274,7 +291,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 
                     <!-- Ord Status Donut -->
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                        <h3 class="text-sm font-bold text-gray-800 mb-2">Statuses</h3>
+                        <h3 class="text-sm font-bold text-gray-800 mb-2">Status Overview</h3>
                         <div class="flex-1 flex items-center justify-center" v-if="ord_analytics.status_data.length > 0">
                             <VueApexCharts :key="'ordstat'+ord_analytics.status_data.length" type="donut" height="160" width="100%" :options="ordStatusOptions" :series="ord_analytics.status_data" />
                         </div>
