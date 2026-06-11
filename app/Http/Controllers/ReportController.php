@@ -48,7 +48,7 @@ class ReportController extends Controller
 
         // --- FETCH EXECUTIVE ORDERS ---
         if ($type === 'all' || $type === 'eo') {
-            $eoQuery = ExecutiveOrder::with('status');
+            $eoQuery = ExecutiveOrder::with(['status', 'committees.members']);
 
             if ($statusId) $eoQuery->where('status_id', $statusId);
             if ($dateFrom) $eoQuery->whereDate('date_issued', '>=', $dateFrom);
@@ -77,9 +77,11 @@ class ReportController extends Controller
             if ($search) {
                 $eoQuery->where(function($q) use ($search) {
                     $q->where('eo_number', 'LIKE', "%{$search}%")
-                      ->orWhere('title', 'LIKE', "%{$search}%")
-                      ->orWhere('subject_matter', 'LIKE', "%{$search}%")
-                      ->orWhereRaw('LOWER(committee_details) LIKE ?', ['%'.strtolower($search).'%']);
+                    ->orWhere('title', 'LIKE', "%{$search}%")
+                    ->orWhere('subject_matter', 'LIKE', "%{$search}%")
+                    ->orWhereHas('committees.members', function($mq) use ($search) {
+                        $mq->where('name', 'LIKE', "%{$search}%");
+                    });
                 });
             }
 
@@ -105,7 +107,7 @@ class ReportController extends Controller
 
         // --- FETCH ORDINANCES ---
         if ($type === 'all' || $type === 'ordinance') {
-            $ordQuery = Ordinance::with('status');
+            $ordQuery = Ordinance::with(['status', 'committees.members']);
 
             if ($statusId) $ordQuery->where('status_id', $statusId);
             if ($dateFrom) $ordQuery->whereDate('date_enacted', '>=', $dateFrom);
@@ -120,12 +122,13 @@ class ReportController extends Controller
             if ($search) {
                 $ordQuery->where(function($q) use ($search) {
                     $q->where('ordinance_number', 'LIKE', "%{$search}%")
-                      ->orWhere('title', 'LIKE', "%{$search}%")
-                      ->orWhere('subject_matter', 'LIKE', "%{$search}%")
-                      ->orWhereRaw('LOWER(author_details) LIKE ?', ['%'.strtolower($search).'%']);
+                    ->orWhere('title', 'LIKE', "%{$search}%")
+                    ->orWhere('subject_matter', 'LIKE', "%{$search}%")
+                    ->orWhereHas('committees.members', function($mq) use ($search) {
+                        $mq->where('name', 'LIKE', "%{$search}%");
+                    });
                 });
             }
-
             $ords = $ordQuery->get()->map(function($ord) {
                 $author = $ord->author_details['primary_author'] ?? 'City Council';
 

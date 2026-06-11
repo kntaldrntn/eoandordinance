@@ -61,6 +61,17 @@ const activeModalTab = ref('details');
 const activeAuthorTab = ref('authors');
 const selectedRecord = ref<any>(null);
 const selectedIrrId = ref<number | null>(null);
+const selectedIrr = ref<any>(null);
+const allIrrs = ref<any[]>([]);
+const selectedIrrIndex = ref(0);
+
+watch(showIrrDialog, (v) => {
+    if (!v) {
+        selectedIrr.value = null;
+        selectedIrrId.value = null;
+        disableIrrForm.reset();
+    }
+});
 
 const parentSearchQuery = ref('');
 const showParentDropdown = ref(false);
@@ -631,24 +642,23 @@ const parseFixed4MemberObjects = (rawArray: any[]) => {
     return parsed.slice(0, 4);
 };
 
-function openIrrDialog(ord: any) {
-    selectedRecord.value = ord;
-    irrForm.reset();
-    irrForm.clearErrors();
-    activeIrrExternalTab.value = 'members';
+// Load an IRR object into the irrForm (parse external_institutions or derive from committees)
+function loadIrr(irrObj: any) {
+    const irr = irrObj || null;
+    selectedIrr.value = irr;
 
-    const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
-    irrForm.lead_office_id = lead ? lead.id : '';
-    deptIrrSearchQuery.value = lead ? lead.name : '';
-
-    const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
-    irrForm.support_offices = supports.length > 0
-        ? supports.map((s:any) => ({ id: s.id, name: s.name }))
-        : [{ id: '', name: '' }];
-
-    const irr = ord.implementing_rules?.[0];
     try {
-        const raw = irr ? irr.external_institutions : null;
+        let raw: any = null;
+        if (irr) {
+            const keys = ['external_institutions','externalInstitutions','external_institution','external_institutions_json','external_institutions_data','externals'];
+            for (const k of keys) {
+                if (irr[k]) { raw = irr[k]; break; }
+            }
+            if (!raw && typeof irr === 'string') {
+                try { const p = JSON.parse(irr); raw = p.external_institutions || p.externals || null; } catch(e) {}
+            }
+        }
+
         if (raw) {
             const ei = typeof raw === 'string' ? JSON.parse(raw) : raw;
             irrForm.external_institutions = {
@@ -657,10 +667,123 @@ function openIrrDialog(ord: any) {
                 others: parseFixed4MemberObjects(ei.others)
             };
         } else {
-             irrForm.external_institutions = defaultIrrExternalInstitutions();
+            irrForm.external_institutions = defaultIrrExternalInstitutions();
         }
-    } catch(e) {
+    } catch(err) {
         irrForm.external_institutions = defaultIrrExternalInstitutions();
+        console.warn('loadIrr: failed parsing external_institutions', err);
+    }
+
+    if ((!irr || !irr.external_institutions) && selectedRecord.value?.committees && selectedRecord.value.committees.length > 0) {
+        const committee = selectedRecord.value.committees.find((c: any) => c.type === 'ordinance_sponsors' || c.type === 'committee_member_registry');
+        if (committee && committee.members) {
+            const e = {
+                members: Array.from({ length: 4 }, createEmptyMember),
+                ngos: Array.from({ length: 4 }, createEmptyMember),
+                others: Array.from({ length: 4 }, createEmptyMember)
+            } as any;
+
+            let extMemberIdx = 0, ngoIdx = 0, otherIdx = 0;
+            const formatMember = (m: any) => ({ id: m.id || null, pmis_id: m.pmis_id || null, name: m.name || '' });
+
+            committee.members.forEach((m: any) => {
+                const role = m.pivot?.role;
+                const memberObj = formatMember(m);
+                if (role === 'External Member') e.members[extMemberIdx++] = memberObj;
+                else if (role === 'NGO Partner') e.ngos[ngoIdx++] = memberObj;
+                else if (role === 'Other Organization') e.others[otherIdx++] = memberObj;
+            });
+
+            const foundAny = e.members.some((x: any) => x && x.name && x.name.trim() !== '') || e.ngos.some((x: any) => x && x.name && x.name.trim() !== '') || e.others.some((x: any) => x && x.name && x.name.trim() !== '');
+            if (foundAny) {
+                irrForm.external_institutions = {
+                    members: parseFixed4MemberObjects(e.members),
+                    ngos: parseFixed4MemberObjects(e.ngos),
+                    others: parseFixed4MemberObjects(e.others)
+                };
+            }
+        }
+    }
+
+    if (irr) {
+        selectedIrrId.value = irr.id || null;
+        irrForm.status = irr.status || 'Active';
+
+        irrForm.lead_office_id = irr.lead_office_id || '';
+        const leadDept = props.departments.find(d => d.id == irr.lead_office_id);
+        deptIrrSearchQuery.value = leadDept ? leadDept.name : '';
+
+        if (irr.support_offices) {
+            try {
+                const so = Array.isArray(irr.support_offices) ? irr.support_offices : (typeof irr.support_offices === 'string' ? JSON.parse(irr.support_offices) : []);
+                irrForm.support_offices = so.map((s: any) => {
+                    if (typeof s === 'object') return { id: s.id || s, name: s.name || (props.departments.find(d => d.id == (s.id || s))?.name || '') };
+                    return { id: s, name: props.departments.find(d => d.id == s)?.name || '' };
+                });
+                if (irrForm.support_offices.length === 0) irrForm.support_offices = [{ id: '', name: '' }];
+            } catch (e) {
+                irrForm.support_offices = [{ id: '', name: '' }];
+            }
+        }
+        irrForm.file = null;
+    } else {
+        selectedIrrId.value = null;
+    }
+}
+
+function openIrrDialog(ord: any) {
+    selectedRecord.value = ord;
+    irrForm.reset();
+    irrForm.clearErrors();
+    activeIrrExternalTab.value = 'members';
+    deptIrrSearchQuery.value = '';
+
+    // Load all IRRs for this ordinance
+    allIrrs.value = Array.isArray(ord.implementing_rules) ? ord.implementing_rules : [];
+    selectedIrrIndex.value = 0;
+
+    // Always populate the NEW IRR form from the ordinance's current departments
+    const lead = ord.departments.find((d: any) => d.pivot.role === 'lead');
+    irrForm.lead_office_id = lead ? lead.id : '';
+    deptIrrSearchQuery.value = lead ? lead.name : '';
+
+    const supports = ord.departments.filter((d: any) => d.pivot.role === 'support');
+    irrForm.support_offices = supports.length > 0
+        ? supports.map((s: any) => ({ id: s.id, name: s.name }))
+        : [{ id: '', name: '' }];
+
+    // Mirror external institutions from the ordinance's committee — same as openEditDialog
+    const e = {
+        members: Array.from({ length: 4 }, createEmptyMember) as any[],
+        ngos: Array.from({ length: 4 }, createEmptyMember) as any[],
+        others: Array.from({ length: 4 }, createEmptyMember) as any[]
+    };
+
+    if (ord.committees && ord.committees.length > 0) {
+        const committee = ord.committees.find((c: any) => c.type === 'ordinance_sponsors');
+        if (committee && committee.members) {
+            let extMemberIdx = 0, ngoIdx = 0, otherIdx = 0;
+            committee.members.forEach((m: any) => {
+                const role = m.pivot?.role;
+                const memberObj = { id: m.id, pmis_id: m.pmis_id, name: m.name };
+                if (role === 'External Member') e.members[extMemberIdx++] = memberObj;
+                else if (role === 'NGO Partner') e.ngos[ngoIdx++] = memberObj;
+                else if (role === 'Other Organization') e.others[otherIdx++] = memberObj;
+            });
+        }
+    }
+
+    irrForm.external_institutions = {
+        members: parseFixed4MemberObjects(e.members),
+        ngos: parseFixed4MemberObjects(e.ngos),
+        others: parseFixed4MemberObjects(e.others)
+    };
+
+    // loadIrr is no longer called — IRR cards just use allIrrs directly
+    const firstIrr = allIrrs.value.length > 0 ? allIrrs.value[0] : null;
+    if (firstIrr) {
+        selectedIrr.value = firstIrr;
+        selectedIrrId.value = firstIrr.id;
     }
 
     showIrrDialog.value = true;
@@ -694,8 +817,19 @@ function confirmDisableIrr(irrId: number) {
 }
 
 function submitDisableIrr() {
-    disableIrrForm.post(route('ordinance.irr.disable', selectedIrrId.value), {
-        onSuccess: () => { showDisableIrrDialog.value = false; disableIrrForm.reset(); showIrrDialog.value = false; notyf.success('IRR Disabled'); },
+    disableIrrForm.post(route('ordinance.irr.disable', selectedIrrId.value!), {
+        onSuccess: (page: any) => {
+            showDisableIrrDialog.value = false;
+            disableIrrForm.reset();
+            selectedIrrId.value = null;
+            // Refresh allIrrs from the updated ordinance in the page props
+            const updatedOrd = (page.props as any).ordinances?.data?.find((o: any) => o.id === selectedRecord.value?.id);
+            if (updatedOrd) {
+                allIrrs.value = Array.isArray(updatedOrd.implementing_rules) ? updatedOrd.implementing_rules : [];
+            }
+            notyf.success('IRR Disabled');
+        },
+        onError: () => notyf.error('Failed to disable IRR.'),
     });
 }
 
@@ -818,7 +952,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     </td>
 
                                     <td class="px-6 py-4 align-top text-center">
-                                        <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600 uppercase border border-gray-200 mb-2">{{ ord.status?.name }}</span>
+                                        <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600 uppercase border border-gray-200 mb-2">{{ ord.is_active ? 'Active' : 'Inactive' }}</span>
                                         <div v-if="ord.implementing_rules?.length > 0" class="flex flex-col gap-1 items-center">
                                             <span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{{ ord.implementing_rules.length }} IRRs Attached</span>
                                         </div>
@@ -868,6 +1002,8 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 <button @click="showDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
                             </div>
                         </div>
+
+                        
 
                         <div v-if="activeModalTab === 'history'" class="py-4">
                             <div v-if="selectedRecord?.audits?.length > 0" class="space-y-6 relative border-l-2 border-gray-100 ml-4 pl-6">
@@ -1280,6 +1416,190 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </Transition>
+
+            <!-- IRR Modal -->
+            <Transition name="fade">
+                <div v-if="showIrrDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
+                    <div class="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div class="flex items-center justify-between mb-4 border-b pb-3">
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2"><BookOpen class="w-5 h-5 text-blue-600" /> Manage IRR</h3>
+                                <p class="text-xs text-gray-500 mt-1">Ordinance: {{ selectedRecord?.ordinance_number || selectedRecord?.title }}</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button @click="showIrrDialog = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">×</button>
+                            </div>
+                        </div>
+
+                        <form @submit.prevent="submitIrrForm" class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Status</label>
+                                    <select v-model="irrForm.status" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option v-for="s in irrStatuses" :key="s" :value="s">{{ s }}</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Lead Implementing Office</label>
+                                    <div class="relative">
+                                        <input type="text" v-model="deptIrrSearchQuery" @input="activeSuggestion = 'irr_lead'; irrForm.lead_office_id = ''" @focus.stop="activeSuggestion='irr_lead'" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search department..." />
+                                        <div v-if="activeSuggestion === 'irr_lead' && getIrrLeadSuggestions(deptIrrSearchQuery).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <div v-for="d in getIrrLeadSuggestions(deptIrrSearchQuery)" :key="d.id" @mousedown.prevent="selectIrrLeadOffice(d, irrForm)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm">{{ d.name }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Supporting Offices</label>
+                                <div class="space-y-2 mt-2">
+                                    <div v-for="(o, idx) in irrForm.support_offices" :key="'s_'+idx" class="flex items-center gap-2">
+                                        <input type="text" v-model="o.name" @input="supportSearchQuery = o.name; activeSuggestion = 'irr_support_'+idx" @focus.stop="activeSuggestion='irr_support_'+idx" class="flex-1 rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search department..." />
+                                        <button type="button" @click="irrForm.support_offices.splice(idx,1)" class="text-red-300 hover:text-red-500 transition p-1" v-if="irrForm.support_offices.length > 1">
+                                            <XCircle class="w-4 h-4" />
+                                        </button>
+
+                                        <div v-if="activeSuggestion === 'irr_support_'+idx && getIrrDeptSuggestions(o.name, idx).length > 0" class="absolute z-30 mt-10 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <div v-for="d in getIrrDeptSuggestions(o.name, idx)" :key="d.id" @mousedown.prevent="selectIrrSupportOffice(d, idx)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm">{{ d.name }}</div>
+                                        </div>
+                                    </div>
+                                    <button type="button" @click="irrForm.support_offices.push({ id: '', name: '' })" class="mt-2 text-[10px] font-bold uppercase text-blue-600">+ Add Row</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">External Institutions / Partners</label>
+                                <div class="flex gap-2 mt-2">
+                                    <button type="button" @click.prevent="activeIrrExternalTab = 'members'" :class="activeIrrExternalTab === 'members' ? 'text-blue-600 font-bold' : 'text-gray-500'" class="px-3 py-1 rounded">Members</button>
+                                    <button type="button" @click.prevent="activeIrrExternalTab = 'ngos'" :class="activeIrrExternalTab === 'ngos' ? 'text-blue-600 font-bold' : 'text-gray-500'" class="px-3 py-1 rounded">NGO's</button>
+                                    <button type="button" @click.prevent="activeIrrExternalTab = 'others'" :class="activeIrrExternalTab === 'others' ? 'text-blue-600 font-bold' : 'text-gray-500'" class="px-3 py-1 rounded">Other Orgs</button>
+                                </div>
+
+                                <div class="space-y-2 mt-3">
+                                    <div v-for="(member, index) in (irrForm.external_institutions as any)[activeIrrExternalTab]" :key="activeIrrExternalTab + index" class="relative flex items-center gap-2">
+                                        <span class="text-[10px] font-bold text-blue-300 w-3 text-right">{{ Number(index) + 1 }}.</span>
+                                        <div class="flex-1">
+                                            <input v-model="member.name" type="text" @focus.stop="activeSuggestion = 'irr_external_' + activeIrrExternalTab + '_' + index" @click.stop="activeSuggestion = 'irr_external_' + activeIrrExternalTab + '_' + index" @input="activeSuggestion = 'irr_external_' + activeIrrExternalTab + '_' + index" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type name..." />
+
+                                            <div v-if="activeSuggestion === 'irr_external_' + activeIrrExternalTab + '_' + String(index) && getSuggestions(member.name, 'External', 'irr_external_' + activeIrrExternalTab, Number(index)).length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'irr_external_' + activeIrrExternalTab, Number(index))" :key="idx" @mousedown.prevent="selectPerson('irr_external_' + activeIrrExternalTab, person, Number(index))" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button type="button" @click="removeMember('irr_external_' + activeIrrExternalTab, Number(index))" class="text-red-300 hover:text-red-500 transition-colors" v-if="(irrForm.external_institutions as any)[activeIrrExternalTab].length > 1">
+                                            <XCircle class="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <button type="button" @click="addMember('irr_external_' + activeIrrExternalTab)" class="mt-2 text-[10px] font-bold uppercase text-blue-600">+ Add Row</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Document (PDF)</label>
+                                <input type="file" @change="(e) => { const t = e.target as HTMLInputElement; irrForm.file = t.files && t.files[0] ? t.files[0] : null }" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+
+                                <!-- Current IRRs Linked -->
+                                <div v-if="allIrrs.length > 0" class="mt-4">
+                                    <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Current IRRs Linked</div>
+                                    <div class="space-y-2">
+                                        <div v-for="irr in allIrrs" :key="irr.id"
+                                            class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors"
+                                            :class="!irr.is_active
+                                                ? 'bg-red-50 border-red-300'
+                                                : 'bg-white border-gray-200 hover:border-blue-200'">
+
+                                            <div class="flex items-start gap-3 min-w-0">
+                                                <Paperclip class="w-4 h-4 mt-0.5 shrink-0"
+                                                    :class="!irr.is_active ? 'text-red-400' : 'text-blue-500'" />
+                                                <div class="min-w-0">
+                                                    <div class="flex items-center gap-2 flex-wrap">
+                                                        <span class="text-sm font-semibold text-gray-800">IRR Document</span>
+                                                        <span v-if="!irr.is_active"
+                                                            class="text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded">
+                                                            Disabled
+                                                        </span>
+                                                    </div>
+                                                    <div class="text-xs text-gray-500 mt-0.5">
+                                                        Lead: {{ irr.lead_office_id ? (props.departments.find((d: any) => d.id == irr.lead_office_id)?.name || 'Unknown Office') : '—' }}
+                                                    </div>
+                                                    <div v-if="!irr.is_active && irr.disable_reason"
+                                                        class="text-xs text-red-500 italic mt-0.5 font-medium">
+                                                        Reason: {{ irr.disable_reason }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="flex items-center gap-2 shrink-0">
+                                                <a v-if="irr.file_url || irr.file_path"
+                                                    :href="irr.file_url || irr.file_path" target="_blank"
+                                                    class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="View PDF">
+                                                    <Eye class="w-4 h-4" />
+                                                </a>
+                                                <button v-if="irr.is_active"
+                                                    type="button"
+                                                    @click.prevent="confirmDisableIrr(irr.id)"
+                                                    class="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition" title="Disable this IRR">
+                                                    <AlertTriangle class="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 mt-4">
+                                <button type="button" @click="showIrrDialog = false" class="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors">Cancel</button>
+                                <button type="submit" :disabled="irrForm.processing" class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-70">Save IRR</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </Transition>
+
+            <!-- Disable IRR Confirmation Modal -->
+            <Transition name="fade">
+                <div v-if="showDisableIrrDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+                    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-red-100">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="flex items-center justify-center w-10 h-10 rounded-full bg-red-50 border border-red-100 shrink-0">
+                                <AlertTriangle class="w-5 h-5 text-red-500" />
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-red-700">Disable this IRR?</h3>
+                            </div>
+                        </div>
+
+                        <p class="text-sm text-gray-600 mb-1">This will mark the IRR as inactive. Please provide a reason (e.g., "Amended by new IRR", "Superseded").</p>
+                        <ul class="text-xs text-gray-500 list-disc list-inside mb-4 space-y-0.5">
+                            <li>This action cannot be undone from this screen.</li>
+                            <li>Provide a specific reason for disabling it (e.g., "Superseded by new IRR").</li>
+                        </ul>
+
+                        <textarea
+                            v-model="disableIrrForm.reason"
+                            rows="3"
+                            class="w-full rounded-xl border border-red-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-red-400 bg-white resize-none"
+                            placeholder="Amended by new IRR / Superseded"
+                            required>
+                        </textarea>
+
+                        <div class="flex items-center justify-end gap-3 mt-4">
+                            <button type="button" @click="showDisableIrrDialog = false; disableIrrForm.reset()"
+                                class="px-5 py-2 rounded-lg bg-gray-100 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition">
+                                Cancel
+                            </button>
+                            <button type="button" @click="submitDisableIrr()" :disabled="disableIrrForm.processing || !disableIrrForm.reason.trim()"
+                                class="flex items-center gap-2 px-5 py-2 rounded-lg bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition disabled:opacity-60">
+                                <XCircle class="w-4 h-4" />
+                                Confirm Disable
+                            </button>
+                        </div>
                     </div>
                 </div>
             </Transition>

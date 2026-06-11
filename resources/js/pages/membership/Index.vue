@@ -121,9 +121,9 @@ const breadcrumbs = [{ title: 'Membership', href: '/membership' }];
                             </select>
 
                             <select v-model="filterActive" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 w-full sm:w-auto outline-none">
-                                <option value="all">Statuses</option>
-                                <option value="active">Active Only</option>
-                                <option value="inactive">Inactive Only</option>
+                                <option value="all">Status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
                             </select>
                         </div>
                     </div>

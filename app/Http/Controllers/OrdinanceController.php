@@ -30,7 +30,7 @@ class OrdinanceController extends Controller
             'departments',
             'parentOrdinance',
             'amendments',
-            'implementingRules.leadOffice',
+            'implementingRules',
             'audits.user',
             'committees.members'
         ]);

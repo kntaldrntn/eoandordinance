@@ -62,6 +62,11 @@ class ExecutiveOrder extends Model
         return $this->belongsToMany(Committee::class, 'eo_committee', 'eo_id', 'committee_id')
                     ->withTimestamps();
     }
+
+    public function classification()
+    {
+        return $this->belongsTo(\App\Models\Classification::class);
+    }
     
     public function getPublicTimelineAttribute()
     {

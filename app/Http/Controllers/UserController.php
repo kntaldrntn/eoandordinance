@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\User;
-use App\Models\CityEmployee; // 🚀 Don't forget to import this!
+use App\Models\CityEmployee;
+use App\Models\CommitteeMember;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -15,7 +16,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::with('department'); 
+        $query = User::with(['department', 'committeeMember']);
 
         if ($request->filled('search')) {
             $searchTerm = $request->search;
@@ -27,21 +28,28 @@ class UserController extends Controller
 
         $users = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
         $departments = Department::orderBy('name')->get();
-        
-        // 🚀 Fetch employees for the suggestive search (Added pmis_id)
+
+        // Kept for backward compatibility / other suggestions if needed
         $employees = CityEmployee::where('state', 1)
-            ->select('id', 'pmis_id', 'full_name', 'position') 
+            ->select('id', 'pmis_id', 'full_name', 'position')
             ->orderBy('full_name')
+            ->get();
+
+        // 🚀 NEW: All registered committee members (internal + external)
+        // for linking a User account to their committee membership records
+        $committeeMembers = CommitteeMember::select('id', 'pmis_id', 'name', 'position', 'agency')
+            ->orderBy('name')
             ->get();
 
         return Inertia::render('users/Index', [
             'users' => $users,
             'departments' => $departments,
-            'employees' => $employees, // 🚀 Passed to Vue
+            'employees' => $employees,
+            'committeeMembers' => $committeeMembers,
             'filters' => $request->only(['search']),
             'flash' => [
                 'success' => session('success'),
-                'error' => session('error')     
+                'error' => session('error')
             ]
         ]);
     }
@@ -49,7 +57,8 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'pmis_id' => 'nullable|integer', // 🚀 Added validation
+            'pmis_id' => 'nullable|integer',
+            'committee_member_id' => 'nullable|exists:committee_members,id',
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:' . User::class,
             'role' => ['required', Rule::in(['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only'])],
@@ -58,7 +67,8 @@ class UserController extends Controller
         ]);
 
         User::create([
-            'pmis_id' => $validated['pmis_id'] ?? null, // 🚀 Save to DB
+            'pmis_id' => $validated['pmis_id'] ?? null,
+            'committee_member_id' => $validated['committee_member_id'] ?? null,
             'name' => $validated['name'],
             'email' => $validated['email'],
             'role' => $validated['role'],
@@ -73,7 +83,8 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
-            'pmis_id' => 'nullable|integer', // 🚀 Added validation
+            'pmis_id' => 'nullable|integer',
+            'committee_member_id' => 'nullable|exists:committee_members,id',
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
             'role' => ['required', Rule::in(['system_admin', 'supervisor', 'focal_person', 'monitoring_committee', 'read_only'])],

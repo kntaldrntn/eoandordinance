@@ -19,7 +19,7 @@ const props = defineProps<{
         date_to: string;
         search: string;
         has_irr: string; 
-        structure_type?: string; // 🚀 Added
+        structure_type?: string;
     };
 }>();
 
@@ -31,7 +31,7 @@ const filterForm = ref({
     date_to: props.filters.date_to || '',
     search: props.filters.search || '',
     has_irr: props.filters.has_irr || '',
-    structure_type: props.filters.structure_type || '', // 🚀 Added
+    structure_type: props.filters.structure_type || '',
 });
 
 const isLoading = ref(false);
@@ -116,9 +116,9 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                     </div>
 
                     <div>
-                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Legal Status</label>
+                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Status</label>
                         <select v-model="filterForm.status_id" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">All Statuses</option>
+                            <option value="">All Status</option>
                             <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.name }}</option>
                         </select>
                     </div>

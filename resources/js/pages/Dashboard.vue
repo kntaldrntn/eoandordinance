@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { 
-    FileText, Gavel, BookOpen, TrendingUp, PieChart, BarChart3, Award, Filter, ArrowUpRight
+    FileText, Gavel, BookOpen, TrendingUp, PieChart, BarChart3, Award, Filter, ArrowUpRight, Building2, Users
 } from 'lucide-vue-next';
 import VueApexCharts from 'vue3-apexcharts';
 import { computed, ref, watch } from 'vue';
@@ -15,6 +15,7 @@ const props = defineProps<{
     recent_eos: Array<any>;
     recent_ords: Array<any>;
     top_departments: Array<any>;
+    top_committees: Array<any>;
     filters: any;
     available_years: number[];
     available_classifications: Array<{ id: number; name: string }>;
@@ -43,7 +44,6 @@ const updateDashboard = debounce(() => {
     }, { preserveState: true, preserveScroll: true });
 }, 300);
 
-// Just watch the core filters, the trend dropdowns trigger updateDashboard directly
 watch([eoYear, eoClass, eoStatus, eoActive, ordYear, ordStatus, ordIrr, ordActive], updateDashboard);
 
 // --- Helpers ---
@@ -52,18 +52,27 @@ const getStatusColor = (statusName: string) => {
         case 'Active': case 'In Effect': return 'bg-emerald-100 text-emerald-700';
         case 'Amended': return 'bg-blue-100 text-blue-700';
         case 'Repealed': return 'bg-red-100 text-red-700';
-        case 'Superseded': return 'bg-indigo-100 text-indigo-700';
+        case 'Superseded': return 'bg-blue-100 text-blue-700';
         case 'Suspended': return 'bg-amber-100 text-amber-700';
         default: return 'bg-gray-100 text-gray-700';
     }
 };
 
-const pieColors = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#64748b'];
+// Brand colors
+const brand = {
+    blue: '#1DB2F5',
+    orange: '#F78219',
+    yellow: '#FEC41B',
+    blueBg: '#e8f7fe',
+    orangeBg: '#fff3e8',
+    yellowBg: '#fffbe6',
+};
 
-// --- Compact ApexCharts Configurations ---
+const pieColors = [brand.blue, brand.orange, brand.yellow, '#0e8fc7', '#c4640f', '#c49a14'];
+
+// --- Chart Configurations ---
 const baseChartOptions = {
     chart: { fontFamily: 'inherit', toolbar: { show: false }, parentHeightOffset: 0 },
-    // 🚀 Turn on data labels globally for bar and line charts
     dataLabels: { 
         enabled: true, 
         style: { fontSize: '10px', fontWeight: 'bold', colors: ['#1e293b'] },
@@ -75,7 +84,7 @@ const baseChartOptions = {
 const eoTrendOptions = computed(() => ({
     ...baseChartOptions,
     chart: { ...baseChartOptions.chart, type: 'area' },
-    colors: ['#2563eb'], 
+    colors: [brand.blue], 
     stroke: { curve: 'smooth', width: 2 },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0 } },
     xaxis: { categories: props.eo_analytics.trend_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
@@ -84,14 +93,14 @@ const eoTrendOptions = computed(() => ({
 
 const ordTrendOptions = computed(() => ({
     ...eoTrendOptions.value,
-    colors: ['#4f46e5'], 
+    colors: [brand.blue], 
     xaxis: { categories: props.ord_analytics.trend_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
 }));
 
 const eoClassOptions = computed(() => ({
     ...baseChartOptions,
     chart: { ...baseChartOptions.chart, type: 'bar' },
-    colors: ['#3b82f6'],
+    colors: [brand.blue],
     plotOptions: { bar: { horizontal: false, borderRadius: 4, columnWidth: '40%' } },
     xaxis: { categories: props.eo_analytics.class_labels, labels: { style: { fontSize: '10px', colors: '#64748b' } }, axisBorder: {show: false}, axisTicks: {show: false} },
     yaxis: { tickAmount: 3, labels: { style: { fontSize: '10px', colors: '#64748b' }, formatter: (val: number) => Math.round(val) } },
@@ -102,7 +111,6 @@ const pieOptions = (labels: string[]) => ({
     labels: labels,
     colors: pieColors,
     plotOptions: { pie: { donut: { size: '75%', labels: { show: true, name: {show: false}, value: { fontSize: '24px', fontWeight: 'bold', offsetY: 8 } } } } },
-    // 🚀 Turn on data labels for donuts and force it to show the count instead of percentages
     dataLabels: { 
         enabled: true,
         formatter: function (val: number, opts: any) {
@@ -117,6 +125,38 @@ const pieOptions = (labels: string[]) => ({
 const eoStatusOptions = computed(() => pieOptions(props.eo_analytics.status_labels));
 const ordStatusOptions = computed(() => pieOptions(props.ord_analytics.status_labels));
 
+const committeeLabels = computed(() => (props.top_committees || []).map((c: any) => c.name));
+const committeeData = computed(() => (props.top_committees || []).map((c: any) => c.total_involved));
+
+const committeeChartOptions = computed(() => ({
+    ...baseChartOptions,
+    chart: { ...baseChartOptions.chart, type: 'bar' },
+    colors: [brand.orange],
+    plotOptions: { 
+        bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } 
+    },
+    dataLabels: { 
+        enabled: true, 
+        textAnchor: 'start', 
+        style: { colors: ['#fff'], fontSize: '10px' }, 
+        offsetX: 5,
+        background: { enabled: false }
+    },
+    xaxis: { 
+        categories: committeeLabels.value, 
+        labels: { style: { fontSize: '10px', colors: '#64748b' } }, 
+        axisBorder: {show: false}, 
+        axisTicks: {show: false} 
+    },
+    yaxis: { 
+        labels: { 
+            style: { fontSize: '10px', colors: '#64748b', fontWeight: 'bold' }, 
+            maxWidth: 120,
+            formatter: (val: string) => val && val.length > 18 ? val.substring(0, 18) + '...' : val 
+        } 
+    }
+}));
+
 const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
 </script>
 
@@ -126,31 +166,37 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="p-4 md:p-6 lg:p-8 bg-[#f8fafc] min-h-screen font-sans text-gray-900 space-y-6">
 
-            <!-- STATS ROW (Unified Bento Style, 3 Cards) -->
+            <!-- STATS ROW -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">       
                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group">
                     <div class="flex justify-between items-start mb-2">
                         <p class="text-sm font-medium text-gray-500">Total Executive Orders</p>
-                        <Link href="/eo" class="p-1.5 rounded-full hover:bg-blue-50 transition-colors group/link" title="Go to Executive Orders">
-                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-blue-600" />
+                        <Link href="/eo" class="p-1.5 rounded-full hover:bg-gray-50 transition-colors group/link" title="Go to Executive Orders">
+                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-[#1DB2F5]" />
                         </Link>
                     </div>
                     <h3 class="text-4xl font-bold text-gray-900">{{ stats.total_eos }}</h3>
                     <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
-                        <span class="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center"><FileText class="w-2.5 h-2.5 text-blue-600"/></span> Executive Orders
+                        <span class="w-4 h-4 rounded-full flex items-center justify-center" style="background:#e8f7fe">
+                            <FileText class="w-2.5 h-2.5" style="color:#1DB2F5" />
+                        </span>
+                        Executive Orders
                     </p>
                 </div>
 
                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group">
                     <div class="flex justify-between items-start mb-2">
                         <p class="text-sm font-medium text-gray-500">Total Ordinances</p>
-                        <Link href="/ordinances" class="p-1.5 rounded-full hover:bg-indigo-50 transition-colors group/link" title="Go to Ordinances">
-                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-indigo-600" />
+                        <Link href="/ordinances" class="p-1.5 rounded-full hover:bg-gray-50 transition-colors group/link" title="Go to Ordinances">
+                            <ArrowUpRight class="w-4 h-4 text-gray-400 group-hover/link:text-[#F78219]" />
                         </Link>
                     </div>
                     <h3 class="text-4xl font-bold text-gray-900">{{ stats.total_ordinances }}</h3>
                     <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
-                        <span class="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center"><Gavel class="w-2.5 h-2.5 text-indigo-600"/></span> City Ordinances
+                        <span class="w-4 h-4 rounded-full flex items-center justify-center" style="background:#fff3e8">
+                            <Gavel class="w-2.5 h-2.5" style="color:#F78219" />
+                        </span>
+                        City Ordinances
                     </p>
                 </div>
 
@@ -160,7 +206,10 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     </div>
                     <h3 class="text-4xl font-bold text-gray-900">{{ stats.ords_with_irrs }}</h3>
                     <p class="text-[10px] text-gray-400 mt-2 flex items-center gap-1.5">
-                        <span class="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center"><BookOpen class="w-2.5 h-2.5 text-amber-600"/></span> With Attached Rules and Regulations
+                        <span class="w-4 h-4 rounded-full flex items-center justify-center" style="background:#fffbe6">
+                            <BookOpen class="w-2.5 h-2.5" style="color:#FEC41B" />
+                        </span>
+                        With Attached Rules and Regulations
                     </p>
                 </div>
             </div>
@@ -168,7 +217,9 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
             <!-- EXECUTIVE ORDERS BENTO -->
             <div class="space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><FileText class="w-5 h-5 text-blue-600" /> Executive Orders</h2>
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <FileText class="w-5 h-5" style="color:#1DB2F5" /> Executive Orders
+                    </h2>
                     <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
                         <select v-model="eoYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
                             <option value="all">All Years</option>
@@ -192,8 +243,8 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <!-- EO Trend -->
                     <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-bold text-gray-800">Issuance of Executive Orders</h3>
-                            <select v-model="eoTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
+                            <h3 class="text-sm font-bold text-gray-800">Issued Executive Orders</h3>
+                            <select v-model="eoTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider" style="color:#1DB2F5; background:#e8f7fe">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
                                 <option value="annual">Annual</option>
@@ -226,16 +277,16 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
                             <h3 class="text-sm font-bold text-gray-800">Recent Executive Orders</h3>
-                            <Link href="/eo" class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition-colors">+ View All</Link>
+                            <Link href="/eo" class="text-[10px] font-bold px-2 py-1 rounded hover:opacity-90 transition-colors" style="color:#1DB2F5; background:#e8f7fe">+ View All</Link>
                         </div>
-                        <div class="flex-1 space-y-3 overflow-y-auto custom-scrollbar max-h-[160px]">
-                            <div v-for="item in recent_eos" :key="item.id" class="flex items-center gap-3 group">
-                                <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                                    <FileText class="w-4 h-4" />
+                        <div class="flex-1 overflow-y-auto custom-scrollbar max-h-[160px] pr-2">
+                            <div v-for="item in recent_eos" :key="item.id" class="flex items-center gap-3 group py-3 border-b border-gray-100 last:border-0">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style="background:#e8f7fe">
+                                    <FileText class="w-4 h-4" style="color:#1DB2F5" />
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-xs font-bold text-gray-900 truncate">{{ item.number }}</p>
-                                    <p class="text-[10px] text-gray-500 truncate">{{ item.title }}</p>
+                                    <p class="text-[10px] text-gray-500">{{ item.title }}</p>
                                 </div>
                                 <span :class="['px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 border', getStatusColor(item.status)]">{{ item.status }}</span>
                             </div>
@@ -244,15 +295,17 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                 </div>
             </div>
 
-            <!-- 🚀 VISUAL DIVIDER ADDED HERE -->
-            <div class="py-4">
+            <!-- VISUAL DIVIDER -->
+            <div class="py-2">
                 <hr class="border-t border-gray-300 border-dashed" />
             </div>
 
             <!-- ORDINANCES BENTO -->
             <div class="space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2"><Gavel class="w-5 h-5 text-indigo-600" /> City Ordinances</h2>
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Gavel class="w-5 h-5" style="color:#F78219" /> City Ordinances
+                    </h2>
                     <div class="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm overflow-x-auto custom-scrollbar">
                         <select v-model="ordYear" class="text-xs border-0 bg-transparent py-1 pl-2 pr-6 focus:ring-0 font-medium text-gray-600 cursor-pointer">
                             <option value="all">All Years</option>
@@ -278,7 +331,7 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="text-sm font-bold text-gray-800">Enacted City Ordinances</h3>
-                            <select v-model="ordTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider">
+                            <select v-model="ordTrendTime" @change="updateDashboard" class="text-[10px] uppercase font-bold border-0 rounded px-2 py-1 cursor-pointer focus:ring-0 outline-none tracking-wider" style="color:#F78219; background:#fff3e8">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
                                 <option value="annual">Annual</option>
@@ -298,18 +351,51 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                         <div v-else class="flex-1 flex items-center justify-center text-xs text-gray-400">No data</div>
                     </div>
 
-                    <!-- Top Departments -->
+                    <!-- Top Sponsorship Committees -->
                     <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                        <h3 class="text-sm font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2">Top Implementing Departments</h3>
-                        <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto custom-scrollbar max-h-[160px] pr-2">
-                            <div v-for="(dept, index) in top_departments" :key="dept.id" class="flex items-center gap-3">
-                                <span class="w-6 h-6 flex items-center justify-center font-bold text-xs rounded-full shrink-0"
-                                      :class="index === 0 ? 'bg-amber-100 text-amber-600' : (index === 1 ? 'bg-slate-200 text-slate-600' : (index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'))">
-                                    {{ index + 1 }}
-                                </span>
-                                <p class="text-xs font-medium text-gray-800 truncate flex-1">{{ dept.name }}</p>
-                                <span class="text-sm font-black text-gray-900">{{ dept.total_involved }}</span>
+                        <h3 class="text-sm font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2 flex items-center gap-2">
+                            <Users class="w-4 h-4" style="color:#F78219" /> Top Sponsorship Committees
+                        </h3>
+                        
+                        <div v-if="top_committees.length > 0" class="flex-1 grid grid-cols-1 md:grid-cols-5 gap-6">
+                            <div class="md:col-span-3 -ml-4 -mb-2">
+                                <VueApexCharts 
+                                    :key="'commchart'+committeeData.join()" 
+                                    type="bar" 
+                                    height="180" 
+                                    :options="committeeChartOptions" 
+                                    :series="[{name: 'Ordinances', data: committeeData}]" 
+                                />
                             </div>
+                            
+                            <div class="md:col-span-2 flex flex-col gap-3 overflow-y-auto custom-scrollbar max-h-[180px] pr-2 mt-2 md:mt-0">
+                                <div v-for="(committee, index) in top_committees" :key="committee.id" class="flex items-center gap-3 group">
+                                    <span 
+                                        class="w-6 h-6 flex items-center justify-center font-bold text-xs rounded-full shrink-0"
+                                        :style="index === 0 
+                                            ? 'background:#fffbe6;color:#FEC41B' 
+                                            : index === 1 
+                                                ? 'background:#f1f5f9;color:#64748b' 
+                                                : index === 2 
+                                                    ? 'background:#fff3e8;color:#F78219' 
+                                                    : 'background:#f1f5f9;color:#94a3b8'"
+                                    >
+                                        {{ index + 1 }}
+                                    </span>
+                                    <p class="text-xs font-bold text-gray-800 truncate flex-1 transition" :title="committee.name"
+                                        @mouseover="($event.target as HTMLElement).style.color='#1DB2F5'"
+                                        @mouseleave="($event.target as HTMLElement).style.color=''">
+                                        {{ committee.name }}
+                                    </p>
+                                    <span class="text-xs font-black px-2 py-0.5 rounded border" style="color:#F78219; background:#fff3e8; border-color:#fcd9b0">
+                                        {{ committee.total_involved }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div v-else class="flex-1 flex items-center justify-center text-xs text-gray-400">
+                            No sponsorship committee data found.
                         </div>
                     </div>
 
@@ -317,18 +403,52 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                         <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
                             <h3 class="text-sm font-bold text-gray-800">Recent Ordinances</h3>
-                            <Link href="/ordinances" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors">+ View All</Link>
+                            <Link href="/ordinances" class="text-[10px] font-bold px-2 py-1 rounded hover:opacity-90 transition-colors" style="color:#F78219; background:#fff3e8">+ View All</Link>
                         </div>
-                        <div class="flex-1 space-y-3 overflow-y-auto custom-scrollbar max-h-[160px]">
-                            <div v-for="item in recent_ords" :key="item.id" class="flex items-center gap-3 group">
-                                <div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                                    <Gavel class="w-4 h-4" />
+                        <div class="flex-1 overflow-y-auto custom-scrollbar max-h-[160px] pr-2">
+                            <div v-for="item in recent_ords" :key="item.id" class="flex items-center gap-3 group py-3 border-b border-gray-100 last:border-0">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style="background:#fff3e8">
+                                    <Gavel class="w-4 h-4" style="color:#F78219" />
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-xs font-bold text-gray-900 truncate">{{ item.number }}</p>
-                                    <p class="text-[10px] text-gray-500 truncate">{{ item.title }}</p>
+                                    <p class="text-[10px] text-gray-500">{{ item.title }}</p>
                                 </div>
                                 <span :class="['px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 border', getStatusColor(item.status)]">{{ item.status }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISUAL DIVIDER -->
+            <div class="py-2">
+                <hr class="border-t border-gray-300 border-dashed" />
+            </div>
+
+            <!-- TOP IMPLEMENTING DEPARTMENTS -->
+            <div class="space-y-4">
+                <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Building2 class="w-5 h-5" style="color:#FEC41B" /> Implementing Departments Overview
+                </h2>
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div v-for="(dept, index) in top_departments" :key="dept.id" class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-sm transition-all">
+                            <span 
+                                class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-full shrink-0 bg-white shadow-sm border border-gray-100"
+                                :style="index === 0 
+                                    ? 'color:#1DB2F5' 
+                                    : index === 1 
+                                        ? 'color:#F78219' 
+                                        : index === 2 
+                                            ? 'color:#FEC41B' 
+                                            : 'color:#94a3b8'"
+                            >
+                                {{ index + 1 }}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs font-bold text-gray-900 truncate">{{ dept.name }}</p>
+                                <p class="text-[10px] text-gray-500 font-medium">{{ dept.total_involved }} Implementations</p>
                             </div>
                         </div>
                     </div>

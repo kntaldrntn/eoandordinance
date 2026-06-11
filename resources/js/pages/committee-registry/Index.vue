@@ -17,7 +17,7 @@ const props = defineProps<{
     };
 }>();
 
-// Search state
+// Table search
 const searchTerm = ref('');
 const filteredCommittees = computed(() => {
     if (!searchTerm.value) return props.committees;
@@ -25,9 +25,7 @@ const filteredCommittees = computed(() => {
     return props.committees.filter((c: any) => c.name.toLowerCase().includes(q));
 });
 
-const clearSearch = () => {
-    searchTerm.value = '';
-};
+const clearSearch = () => { searchTerm.value = ''; };
 
 // Notifications
 const notyf = new Notyf({ duration: 3000, position: { x: 'right', y: 'top' } });
@@ -56,6 +54,20 @@ const itemToDeleteName = ref('');
 const form = useForm({ name: '' });
 const memberForm = useForm({ member_ids: [] as number[] });
 
+// --- Member modal search ---
+const memberSearch = ref('');
+
+const filteredAllMembers = computed(() => {
+    if (!memberSearch.value.trim()) return props.allMembers;
+    const term = memberSearch.value.toLowerCase();
+    return props.allMembers.filter(
+        (m: any) =>
+            m.name.toLowerCase().includes(term) ||
+            (m.position || '').toLowerCase().includes(term) ||
+            (m.agency || '').toLowerCase().includes(term),
+    );
+});
+
 // --- DIALOG ACTIONS ---
 function openAddDialog() {
     isEdit.value = false;
@@ -75,8 +87,8 @@ function openEditDialog(item: any) {
 
 function openMemberEditor(committee: any) {
     selectedCommittee.value = committee;
-    // Pre-check the boxes for existing members
     memberForm.member_ids = committee.members ? committee.members.map((m: any) => m.id) : [];
+    memberSearch.value = '';
     showMemberModal.value = true;
 }
 
@@ -101,11 +113,10 @@ function submitForm() {
 
 function saveMembers() {
     memberForm.post(route('committee-registries.sync', selectedCommittee.value.id), {
-        onSuccess: () => { showMemberModal.value = false; }
+        onSuccess: () => { showMemberModal.value = false; memberSearch.value = ''; }
     });
 }
 
-// Helper to extract department code if it exists in the title string
 const getDeptCode = (titleStr?: string) => {
     if (!titleStr) return '';
     const match = titleStr.match(/\(([^)]+)\)/);
@@ -128,21 +139,14 @@ const getDeptCode = (titleStr?: string) => {
                         placeholder="Search committees..."
                         class="block w-full rounded-lg border border-gray-300 bg-white py-2 pr-10 pl-10 text-sm placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none"
                     />
-                    <button
-                        v-if="searchTerm"
-                        @click="clearSearch"
-                        class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                        ×
-                    </button>
+                    <button v-if="searchTerm" @click="clearSearch" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
                 </div>
 
                 <button
                     class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 w-full md:w-auto justify-center"
                     @click="openAddDialog"
                 >
-                    <Plus class="h-4 w-4" />
-                    Create Committee
+                    <Plus class="h-4 w-4" /> Create Committee
                 </button>
             </div>
 
@@ -207,11 +211,7 @@ const getDeptCode = (titleStr?: string) => {
                             <p class="mt-1 mb-4 text-sm text-gray-500">
                                 {{ searchTerm ? 'Try adjusting your search terms.' : 'Get started by creating your first committee.' }}
                             </p>
-                            <button
-                                v-if="!searchTerm"
-                                @click="openAddDialog"
-                                class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700"
-                            >
+                            <button v-if="!searchTerm" @click="openAddDialog" class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700">
                                 Create Committee
                             </button>
                         </div>
@@ -227,6 +227,7 @@ const getDeptCode = (titleStr?: string) => {
                 message="Are you sure you want to delete this committee? This action cannot be undone."
             />
 
+            <!-- Create / Edit Committee Dialog -->
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
@@ -246,20 +247,9 @@ const getDeptCode = (titleStr?: string) => {
                                 />
                                 <p v-if="form.errors.name" class="mt-1 text-sm text-red-500">{{ form.errors.name }}</p>
                             </div>
-
                             <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                                <button
-                                    type="button"
-                                    class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 transition hover:bg-gray-200 font-medium"
-                                    @click="showDialog = false"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    class="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50 font-bold"
-                                    :disabled="form.processing"
-                                >
+                                <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 transition hover:bg-gray-200 font-medium" @click="showDialog = false">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50 font-bold" :disabled="form.processing">
                                     {{ form.processing ? 'Saving...' : isEdit ? 'Update Committee' : 'Create Committee' }}
                                 </button>
                             </div>
@@ -268,25 +258,50 @@ const getDeptCode = (titleStr?: string) => {
                 </div>
             </Transition>
 
+            <!-- Manage Members Modal -->
             <Transition name="fade">
                 <div v-if="showMemberModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-2xl bg-white rounded-xl shadow-2xl p-6 flex flex-col max-h-[85vh]">
-                        <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-4">
+                    <div class="w-full max-w-2xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+
+                        <!-- Header -->
+                        <div class="flex justify-between items-center px-6 pt-6 pb-4 border-b border-gray-100">
                             <div>
                                 <h3 class="font-bold text-lg text-gray-900">Manage Committee Members</h3>
                                 <p class="text-xs text-blue-600 font-bold mt-1 uppercase tracking-widest">{{ selectedCommittee?.name }}</p>
                             </div>
-                            <button @click="showMemberModal = false" class="text-gray-400 hover:bg-gray-100 p-1.5 rounded-full transition">
+                            <button @click="showMemberModal = false; memberSearch = ''" class="text-gray-400 hover:bg-gray-100 p-1.5 rounded-full transition">
                                 <X class="w-5 h-5" />
                             </button>
                         </div>
-                        
-                        <div class="flex-1 overflow-y-auto mb-4 border border-gray-200 rounded-lg p-2 bg-gray-50 custom-scrollbar">
-                            <label v-for="member in allMembers" :key="member.id" class="flex items-center gap-3 p-3 hover:bg-white rounded-lg transition border-b border-gray-100 last:border-0 cursor-pointer">
+
+                        <!-- Search bar -->
+                        <div class="px-6 py-3 border-b border-gray-100">
+                            <div class="relative">
+                                <Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    v-model="memberSearch"
+                                    type="text"
+                                    placeholder="Search by name, position, or agency..."
+                                    class="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pr-8 pl-9 text-sm placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                                <button v-if="memberSearch" @click="memberSearch = ''" class="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-base leading-none">×</button>
+                            </div>
+                            <p v-if="memberSearch" class="mt-1.5 text-xs text-gray-400">
+                                Showing {{ filteredAllMembers.length }} of {{ allMembers.length }} members
+                            </p>
+                        </div>
+
+                        <!-- Member list -->
+                        <div class="flex-1 overflow-y-auto p-2 bg-gray-50 custom-scrollbar">
+                            <label
+                                v-for="member in filteredAllMembers"
+                                :key="member.id"
+                                class="flex items-center gap-3 p-3 hover:bg-white rounded-lg transition border-b border-gray-100 last:border-0 cursor-pointer"
+                            >
                                 <input type="checkbox" :value="member.id" v-model="memberForm.member_ids" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
                                 <div class="flex flex-col">
                                     <span class="text-sm font-bold text-gray-800">
-                                        {{ member.name }} 
+                                        {{ member.name }}
                                         <span v-if="getDeptCode(member.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(member.title) }})</span>
                                     </span>
                                     <span v-if="member.type" class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="member.type.includes('Internal') ? 'text-blue-600' : 'text-green-600'">
@@ -294,21 +309,23 @@ const getDeptCode = (titleStr?: string) => {
                                     </span>
                                 </div>
                             </label>
-                            
-                            <div v-if="allMembers.length === 0" class="text-center py-10 text-gray-500 text-sm">
-                                No registered members found in the system.
+
+                            <div v-if="filteredAllMembers.length === 0" class="text-center py-10 text-gray-400 text-sm">
+                                {{ memberSearch ? 'No members match your search.' : 'No registered members found in the system.' }}
                             </div>
                         </div>
 
-                        <div class="flex justify-between items-center pt-2">
+                        <!-- Footer -->
+                        <div class="flex justify-between items-center px-6 py-4 border-t border-gray-100">
                             <span class="text-xs font-bold text-gray-500">{{ memberForm.member_ids.length }} Members Selected</span>
                             <div class="flex gap-2">
-                                <button @click="showMemberModal = false" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancel</button>
+                                <button @click="showMemberModal = false; memberSearch = ''" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancel</button>
                                 <button @click="saveMembers" :disabled="memberForm.processing" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-2 transition disabled:opacity-50">
                                     <CheckCircle2 class="w-4 h-4" /> {{ memberForm.processing ? 'Saving...' : 'Save Assignments' }}
                                 </button>
                             </div>
                         </div>
+
                     </div>
                 </div>
             </Transition>
@@ -319,13 +336,9 @@ const getDeptCode = (titleStr?: string) => {
 
 <style scoped>
 .fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.2s ease;
-}
+.fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
+.fade-leave-to { opacity: 0; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }

@@ -32,14 +32,14 @@ class Committee extends Model
     // The Executive Orders this committee is attached to
     public function executiveOrders()
     {
-        return $this->belongsToMany(ExecutiveOrder::class, 'eo_committee')
+        return $this->belongsToMany(ExecutiveOrder::class, 'eo_committee', 'committee_id', 'eo_id')
                     ->withTimestamps();
     }
 
     // The Ordinances this committee is attached to
     public function ordinances()
     {
-        return $this->belongsToMany(Ordinance::class, 'ordinance_committee')
+        return $this->belongsToMany(Ordinance::class, 'ordinance_committee', 'committee_id', 'ordinance_id')
                     ->withTimestamps();
     }
 }

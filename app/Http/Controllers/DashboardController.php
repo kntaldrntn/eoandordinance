@@ -156,6 +156,16 @@ class DashboardController extends Controller
             return $dept;
         })->filter(fn($d) => $d->total_involved > 0)->sortByDesc('total_involved')->take(8)->values();
 
+        // 🚀 NEW: TOP SPONSORSHIP COMMITTEES
+        $top_committees = DB::table('committee_registries')
+            ->leftJoin('committees', 'committee_registries.id', '=', 'committees.registry_id')
+            ->select('committee_registries.id', 'committee_registries.name', DB::raw('COUNT(committees.id) as total_involved'))
+            ->groupBy('committee_registries.id', 'committee_registries.name')
+            ->having('total_involved', '>', 0)
+            ->orderByDesc('total_involved')
+            ->take(8)
+            ->get();
+
         // --- RENDER ---
         return Inertia::render('Dashboard', [
             'stats' => [
@@ -180,6 +190,7 @@ class DashboardController extends Controller
             'recent_eos' => $recent_eos,
             'recent_ords' => $recent_ords,
             'top_departments' => $departments,
+            'top_committees' => $top_committees, // 🚀 PASSED TO VUE
             'filters' => $request->only(['eo_year', 'eo_class', 'eo_status', 'eo_active', 'ord_year', 'ord_status', 'ord_irr', 'ord_active', 'eo_trend_time', 'ord_trend_time']),
             'available_years' => $available_years,
             'available_classifications' => $classifications,

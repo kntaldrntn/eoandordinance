@@ -83,13 +83,12 @@
     <table>
         <thead>
             <tr>
-                <th class="w-xs">Type</th>
-                <th class="w-sm">Tracking No.</th>
-                <th class="w-lg">Subject Title</th>
-                <th class="w-lg">Subject Matter</th>
-                <th class="w-md">Committee / Author</th>
-                <th class="w-date">Date</th>
-                <th class="w-sm">Status</th>
+                <th class="w-xs">Type</th>          <!-- 6% -->
+                <th class="w-sm">Tracking No.</th>  <!-- 10% -->
+                <th class="w-xl">Subject Title</th> <!-- 30% -->
+                <th class="w-xl">Subject Matter</th><!-- 30% -->
+                <th class="w-date">Date</th>        <!-- 12% -->
+                <th class="w-sm">Status</th>        <!-- 12% -->
             </tr>
         </thead>
         <tbody>
@@ -99,13 +98,12 @@
                 <td class="w-sm font-mono">{{ $record['tracking_number'] }}</td>
                 <td class="w-lg font-bold">{{ $record['title'] }}</td>
                 <td class="w-lg">{{ $record['subject_matter'] }}</td>
-                <td class="w-md">{{ $record['involved_parties'] }}</td>
                 <td class="w-date">{{ date('M d, Y', strtotime($record['date'])) }}</td>
                 <td class="w-sm"><strong>{{ $record['status_name'] }}</strong></td>
             </tr>
             @empty
             <tr>
-                <td colspan="7" style="padding: 20px;">No records match your filter criteria.</td>
+                <td colspan="6" style="padding: 20px;">No records match your filter criteria.</td>
             </tr>
             @endforelse
         </tbody>

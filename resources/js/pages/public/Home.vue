@@ -511,7 +511,7 @@ const getActiveIrrs = (irrs: any[]) => {
                                             </span>
                                         </div>
                                         <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-colors">
-                                            <Download class="w-3 h-3" /> Download
+                                            <Eye class="w-3 h-3" /> View
                                         </a>
                                     </div>
                                 </div>

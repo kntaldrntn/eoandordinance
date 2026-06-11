@@ -3,7 +3,7 @@ import DeleteConfirmationModal from '@/components/DeleteConfirmationModal.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Pencil, Plus, Search, Trash2, User as UserIcon, CheckCircle2 } from 'lucide-vue-next';
+import { Pencil, Plus, Search, Trash2, User as UserIcon, CheckCircle2, Link2, XCircle } from 'lucide-vue-next';
 import { Notyf } from 'notyf';
 import 'notyf/notyf.min.css';
 import { ref, watch } from 'vue';
@@ -14,6 +14,8 @@ const props = defineProps<{
         data: Array<{
             id: number;
             pmis_id?: number | null;
+            committee_member_id?: number | null;
+            committee_member?: { id: number; name: string; position?: string; agency?: string } | null;
             name: string;
             email: string;
             role: string;
@@ -29,8 +31,8 @@ const props = defineProps<{
         links: Array<any>;
     };
     departments: Array<{ id: number; name: string }>;
-    // 🚀 STEP 1: pmis_id is added here so Vue knows about it
-    employees: Array<{ id: number; pmis_id: number; full_name: string; position: string }>; 
+    employees: Array<{ id: number; pmis_id: number; full_name: string; position: string }>;
+    committeeMembers: Array<{ id: number; pmis_id: number | null; name: string; position?: string; agency?: string }>;
     filters?: { search?: string };
     flash?: { success?: string; error?: string };
 }>();
@@ -78,7 +80,8 @@ const itemToDeleteName = ref('');
 
 // --- Form ---
 const form = useForm({
-    pmis_id: '' as string | number, 
+    pmis_id: '' as string | number,
+    committee_member_id: '' as string | number,
     name: '',
     email: '',
     role: 'focal_person',
@@ -87,30 +90,28 @@ const form = useForm({
     password_confirmation: '',
 });
 
-// 🚀 STEP 2: The Watcher that auto-fills the name if you type an ID!
-watch(() => form.pmis_id, (newId) => {
-    if (newId) {
-        const matchedEmployee = props.employees.find(e => String(e.pmis_id) === String(newId));
-        if (matchedEmployee) {
-            form.name = matchedEmployee.full_name;
-            activeSuggestion.value = false; 
-        }
-    }
-});
-
-// --- Suggestive Search Logic ---
+// --- Suggestive Search Logic (now searches Committee Members) ---
 const activeSuggestion = ref(false);
+const linkedMemberLabel = ref('');
 
 const getSuggestions = (query: string) => {
     if (!query || query.trim().length < 2) return [];
     const q = query.toLowerCase();
-    return props.employees.filter(e => e.full_name && e.full_name.toLowerCase().includes(q)).slice(0, 10);
+    return props.committeeMembers.filter(m => m.name && m.name.toLowerCase().includes(q)).slice(0, 10);
 };
 
-const selectPerson = (employee: any) => {
-    form.name = employee.full_name;
-    form.pmis_id = employee.pmis_id; // 🚀 Uses the correct pmis_id
+const selectPerson = (member: any) => {
+    form.name = member.name;
+    form.committee_member_id = member.id;
+    form.pmis_id = member.pmis_id || '';
+    linkedMemberLabel.value = member.pmis_id ? 'Linked to HR Record (Internal)' : 'Linked to Committee Member (External)';
     activeSuggestion.value = false;
+};
+
+const clearLink = () => {
+    form.committee_member_id = '';
+    form.pmis_id = '';
+    linkedMemberLabel.value = '';
 };
 
 function openAddDialog() {
@@ -119,6 +120,7 @@ function openAddDialog() {
     form.reset();
     form.clearErrors();
     activeSuggestion.value = false;
+    linkedMemberLabel.value = '';
     showDialog.value = true;
 }
 
@@ -126,13 +128,23 @@ function openEditDialog(user: any) {
     isEdit.value = true;
     editingId.value = user.id;
     form.reset();
-    form.pmis_id = user.pmis_id || ''; 
+    form.pmis_id = user.pmis_id || '';
+    form.committee_member_id = user.committee_member_id || '';
     form.name = user.name;
     form.email = user.email;
     form.role = user.role;
     form.department_id = user.department_id || '';
     form.clearErrors();
     activeSuggestion.value = false;
+
+    if (user.committee_member) {
+        linkedMemberLabel.value = user.committee_member.pmis_id
+            ? 'Linked to HR Record (Internal)'
+            : 'Linked to Committee Member (External)';
+    } else {
+        linkedMemberLabel.value = '';
+    }
+
     showDialog.value = true;
 }
 
@@ -188,6 +200,7 @@ const getRoleBadgeColor = (role: string) => {
                                 <th class="px-6 py-3 font-medium">User</th>
                                 <th class="px-6 py-3 font-medium">Role</th>
                                 <th class="px-6 py-3 font-medium">Department</th>
+                                <th class="px-6 py-3 font-medium">Committee Link</th>
                                 <th class="px-6 py-3 text-center font-medium">Actions</th>
                             </tr>
                         </thead>
@@ -204,6 +217,12 @@ const getRoleBadgeColor = (role: string) => {
                                 </td>
                                 <td class="px-6 py-3 text-gray-600">
                                     {{ user.department?.name || '—' }}
+                                </td>
+                                <td class="px-6 py-3">
+                                    <span v-if="user.committee_member" class="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-600 ring-1 ring-inset ring-blue-200">
+                                        <Link2 class="w-3 h-3" /> {{ user.committee_member.name }}
+                                    </span>
+                                    <span v-else class="text-xs text-gray-400 italic">Not linked</span>
                                 </td>
                                 <td class="px-6 py-3 text-center">
                                     <div class="flex justify-center gap-2">
@@ -233,49 +252,49 @@ const getRoleBadgeColor = (role: string) => {
                 <div v-if="showDialog" @click="activeSuggestion = false" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
                     <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto" @click.stop>
                         <h2 class="mb-6 text-lg font-semibold text-gray-900">{{ isEdit ? 'Edit User' : 'Create New User' }}</h2>
-                        
-                        <form @submit.prevent="submitForm" class="space-y-4">
-                            
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">PMIS ID <span class="text-[10px] text-gray-400 font-normal italic">(Optional)</span></label>
-                                    <input 
-                                        v-model="form.pmis_id" 
-                                        type="number" 
-                                        class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
-                                        placeholder="e.g. 10452" 
-                                    />
-                                    <p v-if="form.errors.pmis_id" class="text-xs text-red-500 mt-1">{{ form.errors.pmis_id }}</p>
-                                </div>
 
+                        <form @submit.prevent="submitForm" class="space-y-4">
+
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
                                 <div class="relative">
-                                    <label class="mb-1 block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
-                                    <input 
-                                        v-model="form.name" 
-                                        type="text" 
+                                    <input
+                                        v-model="form.name"
+                                        type="text"
                                         @focus.stop="activeSuggestion = true"
                                         @click.stop="activeSuggestion = true"
-                                        @input="activeSuggestion = true; form.pmis_id = ''" 
-                                        class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
-                                        placeholder="Search employee or type name..."
-                                        required 
+                                        @input="activeSuggestion = true; clearLink()"
+                                        class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                        placeholder="Search committee member or type name..."
+                                        required
                                     />
-                                    
+
                                     <div v-if="activeSuggestion && getSuggestions(form.name).length > 0" class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                        <div v-for="emp in getSuggestions(form.name)" :key="emp.id" @mousedown.prevent="selectPerson(emp)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                            <div class="text-sm font-bold text-gray-800">{{ emp.full_name }}</div>
+                                        <div v-for="member in getSuggestions(form.name)" :key="member.id" @mousedown.prevent="selectPerson(member)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                            <div class="text-sm font-bold text-gray-800">{{ member.name }}</div>
                                             <div class="text-[10px] text-gray-500 uppercase tracking-widest flex items-center justify-between">
-                                                <span>{{ emp.position || 'Employee' }}</span>
-                                                <span class="text-blue-500 font-bold">PMIS: {{ emp.pmis_id }}</span>
+                                                <span>{{ member.position || (member.pmis_id ? 'Internal Employee' : 'External Partner') }}</span>
+                                                <span :class="member.pmis_id ? 'text-blue-500 font-bold' : 'text-green-600 font-bold'">
+                                                    {{ member.pmis_id ? 'PMIS: ' + member.pmis_id : 'External' }}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    <p v-if="form.errors.name" class="text-xs text-red-500 mt-1">{{ form.errors.name }}</p>
-                                    <p v-if="form.pmis_id" class="text-[10px] text-green-600 font-bold mt-1 uppercase tracking-wide flex items-center gap-1">
-                                        <CheckCircle2 class="w-3 h-3" /> Linked to HR Record
-                                    </p>
                                 </div>
+
+                                <p v-if="form.errors.name" class="text-xs text-red-500 mt-1">{{ form.errors.name }}</p>
+
+                                <div v-if="linkedMemberLabel" class="mt-1 flex items-center justify-between">
+                                    <p class="text-[10px] text-green-600 font-bold uppercase tracking-wide flex items-center gap-1">
+                                        <CheckCircle2 class="w-3 h-3" /> {{ linkedMemberLabel }}
+                                    </p>
+                                    <button type="button" @click="clearLink" class="text-[10px] text-gray-400 hover:text-red-500 flex items-center gap-1">
+                                        <XCircle class="w-3 h-3" /> Unlink
+                                    </button>
+                                </div>
+                                <p v-else class="text-[10px] text-gray-400 mt-1 italic">
+                                    Search and select to link this account to their committee membership records.
+                                </p>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

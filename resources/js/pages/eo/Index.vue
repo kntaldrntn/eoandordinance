@@ -596,9 +596,14 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                             </template>
 
                             <template v-else-if="eos.data.length > 0">
-                                <tr v-for="eo in eos.data" :key="eo.id"
-                                    class="transition-colors border-l-4"
-                                    :class="eo.is_active ? 'hover:bg-gray-50 border-transparent' : 'bg-gray-50/60 opacity-80 border-red-400'">
+                                <tr
+                                    v-for="eo in eos.data"
+                                    :key="eo.id"
+                                    class="transition-colors border-l-4 border-b border-gray-200"
+                                    :class="eo.is_active
+                                        ? 'hover:bg-gray-50 border-l-transparent'
+                                        : 'bg-gray-50/60 opacity-80 border-l-red-400'"
+                                >
 
                                     <td class="px-6 py-4 align-top">
                                         <div class="flex flex-col gap-1">
@@ -631,7 +636,7 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
 
                                     <td class="px-6 py-4 align-top">
                                         <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 border border-gray-200 mt-1">
-                                            {{ eo.status?.name }}
+                                            {{ eo.is_active ? 'Active' : 'Inactive' }}
                                         </span>
                                     </td>
 
