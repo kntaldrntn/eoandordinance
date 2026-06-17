@@ -66,6 +66,11 @@ class Ordinance extends Model
                     ->withTimestamps();
     }
 
+    public function ordinanceCode()
+    {
+        return $this->belongsTo(OrdinanceCode::class, 'ordinance_code_id');
+    }
+
     public function getPublicTimelineAttribute()
     {
         $timeline = collect();

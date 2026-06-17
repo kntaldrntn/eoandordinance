@@ -28,3 +28,10 @@ The Laravel + Vue starter kit is open-sourced software licensed under the MIT li
 ## Added Dompdf
 
 composer require barryvdh/laravel-dompdf
+
+# Added Spatie
+
+composer require spatie/pdf-to-text
+
+# Install Poppler
+https://github.com/oschwartz10612/poppler-windows/releases

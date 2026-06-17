@@ -12,12 +12,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Spatie\PdfToText\Pdf;
 
 class EOController extends Controller
 {
     public function index(Request $request)
     {
-        // ... (Keep your existing index logic exactly as it is) ...
         $requiredStatuses = ['New', 'Amendment', 'Suspended'];
         foreach ($requiredStatuses as $statusName) {
             if (!DB::table('statuses')->where('name', $statusName)->exists()) {
@@ -112,228 +112,347 @@ class EOController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+public function store(Request $request)
     {
         $validated = $request->validate([
-            'amends_eo_id' => 'nullable|exists:executive_orders,id',
-            'eo_number' => 'required|string|unique:executive_orders,eo_number',
-            'title' => 'required|string|max:1000',
-            'classification_id' => 'nullable|exists:classifications,id',
-            'date_issued' => 'required|date',
+            'amends_eo_id'     => 'nullable|exists:executive_orders,id',
+            'eo_number'        => 'required|string|unique:executive_orders,eo_number',
+            'title'            => 'required|string|max:1000',
+            'classification_id'=> 'nullable|exists:classifications,id',
+            'date_issued'      => 'required|date',
             'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
-            'legal_basis' => 'nullable|string',
-            'lead_office_id' => 'nullable|exists:departments,id',
-            'status_id' => 'required|exists:statuses,id',
-            'file' => 'nullable|file|mimes:pdf|max:20480',
-            'declaration' => 'nullable|string',
+            'legal_basis'      => 'nullable|string',
+            'lead_office_id'   => 'nullable|exists:departments,id',
+            'status_id'        => 'required|exists:statuses,id',
+            'file'             => 'nullable|file|mimes:pdf|max:20480',
+            'declaration'      => 'nullable|string',
         ]);
 
-        // 🚀 THE FIX: Extract and decode exactly like update() does
+        // Safely decode committee_details (comes as JSON string via multipart)
         $committeeData = $request->input('committee_details');
         if (is_string($committeeData)) {
             $committeeData = json_decode($committeeData, true);
         }
 
         DB::transaction(function () use ($request, $validated, $committeeData) {
+
+            // If this EO amends another, mark the parent as Amended + inactive
             if (!empty($validated['amends_eo_id'])) {
                 $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
-                $amendedStatusId = $amendedStatus ? $amendedStatus->id : DB::table('statuses')->insertGetId(['name' => 'Amended']);
+                $amendedStatusId = $amendedStatus
+                    ? $amendedStatus->id
+                    : DB::table('statuses')->insertGetId(['name' => 'Amended']);
 
                 if ($oldEO) {
                     $oldEO->update(['status_id' => $amendedStatusId, 'is_active' => false]);
                 }
             }
 
-            $path = $request->hasFile('file') ? $request->file('file')->store('eos', 'public') : null;
+            // 🚀 PDF EXTRACTION LOGIC
+            $path = null;
+            $extractedText = null;
+
+            if ($request->hasFile('file')) {
+                $path = $request->file('file')->store('eos', 'public');
+                
+                try {
+                    $absolutePath = storage_path('app/public/' . $path);
+                    $extractedText = (new Pdf('C:/poppler/Library/bin/pdftotext.exe'))
+                        ->setPdf($absolutePath)
+                        ->text();
+                } catch (\Exception $e) {
+                    $extractedText = null; // Failsafe if it's an image-only PDF
+                }
+            }
+
             $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
-            $isActive = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
+            $isActive   = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
 
             $eo = ExecutiveOrder::create([
-                'amends_eo_id' => $validated['amends_eo_id'] ?? null,
+                'amends_eo_id'      => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
-                'eo_number' => $validated['eo_number'],
-                'title' => $validated['title'],
+                'eo_number'         => $validated['eo_number'],
+                'title'             => $validated['title'],
                 'classification_id' => $validated['classification_id'] ?? null,
-                'date_issued' => $validated['date_issued'],
-                'effectivity_date' => $validated['effectivity_date'],
-                'legal_basis' => $validated['legal_basis'],
+                'date_issued'       => $validated['date_issued'],
+                'effectivity_date'  => $validated['effectivity_date'],
+                'legal_basis'       => $validated['legal_basis'],
                 'issuing_authority' => 'City Mayor',
-                'status_id' => $validated['status_id'],
-                'is_active' => $isActive,
-                'declaration' => $validated['declaration'] ?? null,
-                'file_path' => $path,
+                'status_id'         => $validated['status_id'],
+                'is_active'         => $isActive,
+                'declaration'       => $validated['declaration'] ?? null,
+                'file_path'         => $path,
+                'document_content'  => $extractedText, // 🚀 SAVE THE EXTRACTED TEXT HERE
             ]);
 
             if (!empty($validated['lead_office_id'])) {
                 $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
             }
 
-            // 🚀 Now pass the safely decoded array to the process function
-            if (!empty($committeeData)) {
-                $this->processCommittee($eo, $committeeData);
-            }
+            // Process committee/program structure
+            $this->processCommittee($eo, $committeeData);
         });
 
         return redirect()->back()->with('success', 'Executive Order encoded successfully.');
     }
 
-    public function update(Request $request, ExecutiveOrder $eo)
+public function update(Request $request, ExecutiveOrder $eo)
     {
         $validated = $request->validate([
-            'amends_eo_id' => 'nullable|exists:executive_orders,id',
-            'eo_number' => 'required|string|unique:executive_orders,eo_number,' . $eo->id,
-            'title' => 'required|string|max:1000',
-            'classification_id' => 'nullable|exists:classifications,id',
-            'date_issued' => 'required|date',
+            'amends_eo_id'     => 'nullable|exists:executive_orders,id',
+            'eo_number'        => 'required|string|unique:executive_orders,eo_number,' . $eo->id,
+            'title'            => 'required|string|max:1000',
+            'classification_id'=> 'nullable|exists:classifications,id',
+            'date_issued'      => 'required|date',
             'effectivity_date' => 'nullable|date|after_or_equal:date_issued',
-            'legal_basis' => 'nullable|string',
-            'lead_office_id' => 'nullable|exists:departments,id',
-            'status_id' => 'required|exists:statuses,id',
-            'file' => 'nullable|file|mimes:pdf|max:20480',
-            'declaration' => 'nullable|string',
+            'legal_basis'      => 'nullable|string',
+            'lead_office_id'   => 'nullable|exists:departments,id',
+            'status_id'        => 'required|exists:statuses,id',
+            'file'             => 'nullable|file|mimes:pdf|max:20480',
+            'declaration'      => 'nullable|string',
         ]);
 
+        // Safely decode committee_details (comes as JSON string via multipart)
         $committeeData = $request->input('committee_details');
-
         if (is_string($committeeData)) {
             $committeeData = json_decode($committeeData, true);
         }
 
         DB::transaction(function () use ($request, $validated, $eo, $committeeData) {
 
+            // If amends target changed, mark the new parent as Amended + inactive
             if (!empty($validated['amends_eo_id']) && $eo->amends_eo_id != $validated['amends_eo_id']) {
                 $oldEO = ExecutiveOrder::find($validated['amends_eo_id']);
                 $amendedStatus = DB::table('statuses')->where('name', 'Amended')->first();
-                $amendedStatusId = $amendedStatus ? $amendedStatus->id : DB::table('statuses')->insertGetId(['name' => 'Amended']);
+                $amendedStatusId = $amendedStatus
+                    ? $amendedStatus->id
+                    : DB::table('statuses')->insertGetId(['name' => 'Amended']);
 
                 if ($oldEO) {
                     $oldEO->update(['status_id' => $amendedStatusId, 'is_active' => false]);
                 }
             }
 
+            // 🚀 PDF EXTRACTION LOGIC FOR UPDATE
+            $extractedText = $eo->document_content; // Default to keeping the old text
+
+            // Replace file if a new one was uploaded
             if ($request->hasFile('file')) {
                 if ($eo->file_path && Storage::disk('public')->exists($eo->file_path)) {
                     Storage::disk('public')->delete($eo->file_path);
                 }
-                $eo->file_path = $request->file('file')->store('eos', 'public');
+                
+                $path = $request->file('file')->store('eos', 'public');
+                $eo->file_path = $path; // Update model instance for the DB
+                
+                // Extract text from the NEW file
+                try {
+                    $absolutePath = storage_path('app/public/' . $path);
+                    $extractedText = (new Pdf('C:/poppler/Library/bin/pdftotext.exe'))
+                        ->setPdf($absolutePath)
+                        ->text();
+                } catch (\Exception $e) {
+                    $extractedText = null;
+                }
             }
 
             $statusName = DB::table('statuses')->where('id', $validated['status_id'])->value('name');
-            $isActive = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
+            $isActive   = !in_array($statusName, ['Suspended', 'Amended', 'Repealed', 'Superseded']);
 
             $eo->update([
-                'amends_eo_id' => $validated['amends_eo_id'] ?? null,
+                'amends_eo_id'      => $validated['amends_eo_id'] ?? null,
                 'relationship_type' => !empty($validated['amends_eo_id']) ? 'Amends' : null,
-                'eo_number' => $validated['eo_number'],
-                'title' => $validated['title'],
+                'eo_number'         => $validated['eo_number'],
+                'title'             => $validated['title'],
                 'classification_id' => $validated['classification_id'] ?? null,
-                'date_issued' => $validated['date_issued'],
-                'effectivity_date' => $validated['effectivity_date'],
-                'legal_basis' => $validated['legal_basis'],
-                'status_id' => $validated['status_id'],
-                'is_active' => $isActive,
-                'declaration' => $validated['declaration'] ?? null,
+                'date_issued'       => $validated['date_issued'],
+                'effectivity_date'  => $validated['effectivity_date'],
+                'legal_basis'       => $validated['legal_basis'],
+                'status_id'         => $validated['status_id'],
+                'is_active'         => $isActive,
+                'declaration'       => $validated['declaration'] ?? null,
+                'document_content'  => $extractedText, // 🚀 SAVE THE NEW EXTRACTED TEXT HERE
             ]);
 
+            // Re-attach lead office
             $eo->departments()->detach();
             if (!empty($validated['lead_office_id'])) {
                 $eo->departments()->attach($validated['lead_office_id'], ['role' => 'lead']);
             }
 
-            if (!empty($committeeData)) {
-                $this->processCommittee($eo, $committeeData);
-            }
+            // Process committee/program structure
+            $this->processCommittee($eo, $committeeData);
         });
 
         return redirect()->back()->with('success', 'Executive Order updated successfully.');
     }
 
+    /**
+     * Handles creating/updating/deleting the committee or program structure for an EO.
+     *
+     * FIX SUMMARY:
+     * - The old code used updateOrCreate keyed only on the committee name.
+     *   This caused the committee `type` to never change when an EO was
+     *   re-saved with a different structure type (e.g. council → program).
+     * - Now we DELETE the old committee first, then CREATE a fresh one.
+     *   This guarantees the correct `type` is always stored.
+     * - Also fixed: program `co_lead_office_id` is now properly saved.
+     */
     private function processCommittee(ExecutiveOrder $eo, $details)
     {
-        // Safety format check - Ensure it is an array before testing ['type']
+        // Ensure we always work with an array
         $data = is_string($details) ? json_decode($details, true) : $details;
 
+        // ── CASE 1: No committee / none selected ────────────────────────────
         if (empty($data) || !isset($data['type']) || $data['type'] === 'none') {
-            $existingCommittee = $eo->committees()->first();
-            if ($existingCommittee) {
-                $existingCommittee->delete();
-            }
+            // Detach pivot first, then delete orphaned committee rows
+            $oldCommittees = $eo->committees()->get();
             $eo->committees()->detach();
+            foreach ($oldCommittees as $old) {
+                // Only delete if no other EO is using this committee
+                if ($old->executiveOrders()->count() === 0) {
+                    $old->members()->detach();
+                    $old->delete();
+                }
+            }
             return;
         }
 
-        $committee = Committee::updateOrCreate(
-            ['name' => $eo->title . ' Committee'],
-            ['type' => $data['type']]
-        );
+        // ── CASE 2: council or program ───────────────────────────────────────
+        // Step 1 — Remove the existing committee link for this EO (if any)
+        //          and delete the committee record so we always create fresh.
+        //          This prevents the old `type` from being retained.
+        $oldCommittees = $eo->committees()->get();
+        $eo->committees()->detach();
+        foreach ($oldCommittees as $old) {
+            if ($old->executiveOrders()->count() === 0) {
+                $old->members()->detach();
+                $old->delete();
+            }
+        }
 
-        $eo->committees()->syncWithoutDetaching([$committee->id]);
+        // Step 2 — Create a brand-new committee with the correct type
+        $committeePayload = [
+            'name' => $eo->title . ' Committee',
+            'type' => $data['type'],       // ← always correct now
+        ];
 
-        $committee->members()->detach();
+        // Persist co_lead_office_id for program-type EOs
+        // Cast to int: forceFormData always sends numbers as strings ("5" not 5)
+        if ($data['type'] === 'program') {
+            $coLeadId = $data['program']['co_lead_office_id'] ?? null;
+            $committeePayload['co_lead_office_id'] = ($coLeadId !== null && $coLeadId !== '' && $coLeadId !== '0')
+                ? (int) $coLeadId
+                : null;
+        }
 
+        $committee = Committee::create($committeePayload);
+
+        // Step 3 — Link the new committee to this EO
+        $eo->committees()->attach($committee->id);
+
+        // Step 4 — Build the member pivot array
         $membersToSync = [];
 
-        $addMember = function ($person, $role) use (&$membersToSync) {
-            $id = is_array($person) ? ($person['id'] ?? null) : null;
+        /**
+         * Helper: resolve a person to a CommitteeMember record and queue it.
+         *
+         * $person can be:
+         *   - an array with keys: id, pmis_id, name
+         *   - a plain string (fallback)
+         */
+        $addMember = function ($person, string $role) use (&$membersToSync) {
+            $id     = is_array($person) ? ($person['id']     ?? null) : null;
             $pmisId = is_array($person) ? ($person['pmis_id'] ?? null) : null;
-            $name = is_array($person) ? ($person['name'] ?? '') : $person;
+            $name   = is_array($person) ? ($person['name']   ?? '')   : $person;
 
-            if (empty(trim($name))) return;
+            if (empty(trim((string) $name))) {
+                return; // skip blank entries
+            }
 
             $member = null;
 
+            // Priority 1: look up by existing CommitteeMember PK
             if ($id) {
                 $member = CommitteeMember::find($id);
             }
 
+            // Priority 2: match/create from PMIS employee record
             if (!$member && $pmisId) {
-                $employee = \App\Models\CityEmployee::where('pmis_id', $pmisId)->first();
+                $employee = CityEmployee::where('pmis_id', $pmisId)->first();
                 if ($employee) {
                     $member = CommitteeMember::updateOrCreate(
                         ['pmis_id' => $pmisId],
-                        ['name' => $employee->full_name, 'position' => $employee->position, 'agency' => $employee->department->name ?? 'City Government']
+                        [
+                            'name'     => $employee->full_name,
+                            'position' => $employee->position,
+                            'agency'   => $employee->department->name ?? 'City Government',
+                        ]
                     );
                 }
             }
 
+            // Priority 3: match/create by name only (external / free-typed)
             if (!$member) {
-                $member = CommitteeMember::firstOrCreate(['name' => $name], ['name' => $name, 'position' => 'External Partner']);
+                $member = CommitteeMember::firstOrCreate(
+                    ['name' => $name],
+                    ['name' => $name, 'position' => 'External Partner']
+                );
             }
 
-            if ($member) $membersToSync[$member->id] = ['role' => $role];
+            if ($member) {
+                $membersToSync[$member->id] = ['role' => $role];
+            }
         };
 
+        // ── COUNCIL / COMMITTEE / TWG ────────────────────────────────────────
         if ($data['type'] === 'council' && isset($data['council'])) {
             $c = $data['council'];
-            $addMember($c['chairman'] ?? '', 'Chairman');
-            $addMember($c['co_chairman'] ?? '', 'Co-Chairman');
-            $addMember($c['vice_chairman'] ?? '', 'Vice Chairman');
-            $addMember($c['lead_secretariat'] ?? '', 'Lead Secretariat');
-            $addMember($c['twg_head'] ?? '', 'TWG Head');
 
+            // Single-slot leadership roles
+            $addMember($c['chairman']       ?? '', 'Chairman');
+            $addMember($c['co_chairman']    ?? '', 'Co-Chairman');
+            $addMember($c['vice_chairman']  ?? '', 'Vice Chairman');
+            $addMember($c['lead_secretariat'] ?? '', 'Lead Secretariat');
+            $addMember($c['twg_head']       ?? '', 'TWG Head');
+
+            // Multi-member list roles
             $rolesMap = [
-                'internal_members' => 'Internal Member',
-                'external_members' => 'External Member',
+                'internal_members'    => 'Internal Member',
+                'external_members'    => 'External Member',
                 'secretariat_members' => 'Secretariat Member',
-                'twg_internal_members' => 'TWG Internal',
-                'twg_external_members' => 'TWG External'
+                'twg_internal_members'=> 'TWG Internal',
+                'twg_external_members'=> 'TWG External',
             ];
 
             foreach ($rolesMap as $key => $roleName) {
-                if (!empty($c[$key])) {
-                    foreach ($c[$key] as $m) $addMember($m, $roleName);
+                if (!empty($c[$key]) && is_array($c[$key])) {
+                    foreach ($c[$key] as $m) {
+                        $addMember($m, $roleName);
+                    }
                 }
             }
-        } elseif ($data['type'] === 'program' && isset($data['program'])) {
+        }
+
+        // ── PROGRAM-BASED INITIATIVE ─────────────────────────────────────────
+        elseif ($data['type'] === 'program' && isset($data['program'])) {
             $p = $data['program'];
-            if (!empty($p['internal_members'])) {
-                foreach ($p['internal_members'] as $m) $addMember($m, 'Program Internal');
+
+            if (!empty($p['internal_members']) && is_array($p['internal_members'])) {
+                foreach ($p['internal_members'] as $m) {
+                    $addMember($m, 'Program Internal');
+                }
             }
-            if (!empty($p['external_members'])) {
-                foreach ($p['external_members'] as $m) $addMember($m, 'Program External');
+
+            if (!empty($p['external_members']) && is_array($p['external_members'])) {
+                foreach ($p['external_members'] as $m) {
+                    $addMember($m, 'Program External');
+                }
             }
         }
+
+        // Step 5 — Sync all collected members to the committee
         $committee->members()->sync($membersToSync);
     }
 }

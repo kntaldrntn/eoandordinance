@@ -384,52 +384,49 @@ function openEditDialog(eo: any) {
     selectedRecord.value = eo;
     activeModalTab.value = 'details';
     activeCouncilTab.value = 'committee';
-
+ 
     form.clearErrors();
-
+ 
     form.eo_number = eo.eo_number;
     form.title = eo.title;
     form.classification_id = eo.classification_id || '';
     form.status_id = eo.status_id || '';
-
+ 
     form.date_issued = formatForInput(eo.date_issued);
     form.effectivity_date = formatForInput(eo.effectivity_date);
-
+ 
     form.legal_basis = eo.legal_basis || '';
     form.declaration = eo.declaration || '';
     form.is_active = Boolean(eo.is_active);
     form.amends_eo_id = eo.amends_eo_id || '';
-
+ 
     if (eo.amends_eo_id) {
         const parent = props.existing_eos.find(e => e.id === eo.amends_eo_id);
         parentSearchQuery.value = parent ? `AMENDING: ${parent.eo_number}` : '';
     } else {
         parentSearchQuery.value = '';
     }
-
+ 
     const c = defaultCommitteeDetails();
-
-    // Check if the EO has an attached committee
+ 
     if (eo.committees && eo.committees.length > 0) {
-        const committee = eo.committees[0]; // Assuming 1 committee per EO
+        const committee = eo.committees[0];
         c.type = committee.type;
-
-        // Loop through the relational members and map them by their pivot role
+ 
         if (committee.members && committee.members.length > 0) {
-
             const formatMember = (m: any) => ({
                 id: m.id,
                 pmis_id: m.pmis_id,
                 name: m.name
             });
-
+ 
             let intIdx = 0, extIdx = 0, secIdx = 0, twgIntIdx = 0, twgExtIdx = 0;
             let progIntIdx = 0, progExtIdx = 0;
-
+ 
             committee.members.forEach((m: any) => {
                 const role = m.pivot.role;
                 const memberObj = formatMember(m);
-
+ 
                 if (c.type === 'council') {
                     if (role === 'Chairman') c.council.chairman = memberObj;
                     else if (role === 'Vice Chairman') c.council.vice_chairman = memberObj;
@@ -441,19 +438,23 @@ function openEditDialog(eo: any) {
                     else if (role === 'Secretariat Member') c.council.secretariat_members[secIdx++] = memberObj;
                     else if (role === 'TWG Internal') c.council.twg_internal_members[twgIntIdx++] = memberObj;
                     else if (role === 'TWG External') c.council.twg_external_members[twgExtIdx++] = memberObj;
-                }
-                else if (c.type === 'program') {
+                } else if (c.type === 'program') {
                     if (role === 'Program Internal') c.program.internal_members[progIntIdx++] = memberObj;
                     else if (role === 'Program External') c.program.external_members[progExtIdx++] = memberObj;
                 }
             });
         }
+ 
+        // ── FIX: restore co_lead_office_id so editing doesn't wipe it ──
+        if (c.type === 'program') {
+            c.program.co_lead_office_id = committee.co_lead_office_id || '';
+        }
     }
-
+ 
     const lead = eo.departments?.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
     leadOfficeSearch.value = lead ? lead.name : '';
-
+ 
     form.file = null;
     form.committee_details = c;
     showDialog.value = true;
@@ -492,36 +493,36 @@ function handleFileChange(e: Event) {
 
 function submitForm() {
     const url = isEdit.value && editingId.value ? route('eo.update', editingId.value) : route('eo.store');
-    
-    // Inertia supports converting form data to multipart/form-data natively 
-    // when using 'post' and specifying _method: 'PUT' for updates.
-    const method = isEdit.value ? 'post' : 'post'; 
-
+ 
     form.transform((data) => {
-        const transformed = { ...data };
-        
-        // Clean out empty string members to prevent DB errors
         const filterEmpty = (arr: any[]) => arr.filter(m => m && m.name && m.name.trim() !== '');
-
-        if (transformed.committee_details.type === 'council') {
-            transformed.committee_details.council.internal_members = filterEmpty(data.committee_details.council.internal_members);
-            transformed.committee_details.council.external_members = filterEmpty(data.committee_details.council.external_members);
-            transformed.committee_details.council.secretariat_members = filterEmpty(data.committee_details.council.secretariat_members);
-            transformed.committee_details.council.twg_internal_members = filterEmpty(data.committee_details.council.twg_internal_members);
-            transformed.committee_details.council.twg_external_members = filterEmpty(data.committee_details.council.twg_external_members);
-        } else if (transformed.committee_details.type === 'program') {
-            transformed.committee_details.program.internal_members = filterEmpty(data.committee_details.program.internal_members);
-            transformed.committee_details.program.external_members = filterEmpty(data.committee_details.program.external_members);
+ 
+        // ── FIX: deep-clone so we don't mutate live form state ──
+        const committeeDetails = JSON.parse(JSON.stringify(data.committee_details));
+ 
+        if (committeeDetails.type === 'council') {
+            committeeDetails.council.internal_members     = filterEmpty(committeeDetails.council.internal_members);
+            committeeDetails.council.external_members     = filterEmpty(committeeDetails.council.external_members);
+            committeeDetails.council.secretariat_members  = filterEmpty(committeeDetails.council.secretariat_members);
+            committeeDetails.council.twg_internal_members = filterEmpty(committeeDetails.council.twg_internal_members);
+            committeeDetails.council.twg_external_members = filterEmpty(committeeDetails.council.twg_external_members);
+        } else if (committeeDetails.type === 'program') {
+            committeeDetails.program.internal_members = filterEmpty(committeeDetails.program.internal_members);
+            committeeDetails.program.external_members = filterEmpty(committeeDetails.program.external_members);
+            // co_lead_office_id is preserved from the deep clone above
         }
-
-        // Trick Laravel into accepting a PUT request over a multipart form POST
-        if (isEdit.value) {
-            transformed._method = 'PUT';
-        }
-
-        return transformed;
+ 
+        return {
+            ...data,
+            // ── KEY FIX: JSON.stringify so PHP receives one clean string ──
+            // forceFormData bracket-notation loses values at 3+ nesting levels.
+            // Sending as a JSON string lets PHP json_decode it reliably.
+            committee_details: JSON.stringify(committeeDetails),
+            // Spoof PUT for Laravel over multipart POST
+            _method: isEdit.value ? 'PUT' : undefined,
+        };
     }).post(url, {
-        forceFormData: true, // 🚀 Let Inertia handle the file logic!
+        forceFormData: true,
         onSuccess: () => {
             showDialog.value = false;
             form.reset();

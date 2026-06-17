@@ -60,17 +60,18 @@ class ReportController extends Controller
                 $eoQuery->doesntHave('implementingRules');
             }
 
-            // 🚀 NEW: Structure Type Filter Logic
+            // 🚀 FIXED: Structure Type Filter Logic
             if ($structureType) {
                 if ($structureType === 'none') {
-                    // Standard EO could be saved as 'none' or missing from older records
-                    $eoQuery->where(function($q) {
-                        $q->whereNull('committee_details')
-                          ->orWhere('committee_details->type', 'none');
+                    // Standard EOs do not have a council or program committee attached
+                    $eoQuery->whereDoesntHave('committees', function($q) {
+                        $q->whereIn('type', ['council', 'program']);
                     });
                 } else {
-                    // Query the specific JSON attribute directly
-                    $eoQuery->where('committee_details->type', $structureType);
+                    // Query the related 'committees' table for the specific type
+                    $eoQuery->whereHas('committees', function($q) use ($structureType) {
+                        $q->where('type', $structureType);
+                    });
                 }
             }
             

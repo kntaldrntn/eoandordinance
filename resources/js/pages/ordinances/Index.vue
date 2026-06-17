@@ -21,7 +21,8 @@ const props = defineProps<{
     statuses: Array<{ id: number; name: string }>;
     existing_ordinances: Array<{ id: number; ordinance_number: string; title: string }>;
     peopleRegistry: Array<{ name: string; title: string; type: string }>;
-    committeeRegistries: Array<{ id: number; name: string; members: Array<any> }>; // 🚀 ADDED PROP
+    committeeRegistries: Array<{ id: number; name: string; members: Array<any> }>;
+    ordinance_codes: Array<{ id: number; name: string }>;
     filters?: { search?: string; year?: string; is_active?: string };
     available_years: number[];
     flash?: { success?: string; error?: string };
@@ -182,6 +183,7 @@ const form = useForm({
     ordinance_number: '',
     title: '',
     subject_matter: '',
+    ordinance_code_id: '' as string | number,
     date_approved: '',
     effectivity_date: '',
     date_enacted: '',
@@ -461,6 +463,7 @@ function openAddDialog() {
     form.reset(); form.clearErrors();
     form.relationship_type = 'Partial Amendment';
     form.is_active = true;
+    form.ordinance_code_id = '';
     form.author_details = defaultAuthorDetails();
     form.support_office_ids = [];
     form.external_institutions = {
@@ -494,6 +497,7 @@ function openEditDialog(ord: any) {
     form.approved_by = ord.approved_by || '';
     form.status_id = ord.status_id;
     form.is_active = Boolean(ord.is_active);
+    form.ordinance_code_id = ord.ordinance_code_id || '';
     form.amends_ordinance_id = ord.amends_ordinance_id || '';
     form.relationship_type = ord.relationship_type || 'Partial Amendment';
     form.remarks = ord.remarks || '';
@@ -1050,6 +1054,17 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Subject Matter</label>
                                         <textarea v-model="form.subject_matter" rows="2" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief summary of the subject matter..."></textarea>
                                     </div>
+
+                                    <div class="border-t border-gray-100 pt-4 mt-4">
+                                        <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Mother Code <span class="text-gray-400 font-normal">(Optional)</span></label>
+                                        <select v-model="form.ordinance_code_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="">None</option>
+                                            <option v-for="code in ordinance_codes" :key="code.id" :value="code.id">
+                                                {{ code.name }}
+                                            </option>
+                                        </select>
+                                        <p class="text-[10px] text-gray-400 mt-1 italic">Select if this ordinance amends or falls under a specific city code (e.g., The Traffic Code).</p>
+                                    </div>
                                 </div>
 
                                 <Transition name="fade">
@@ -1089,8 +1104,8 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                             <div v-if="form.amends_ordinance_id">
                                                 <label class="mb-1 block text-xs font-bold text-amber-900 uppercase">Amendment Type</label>
                                                 <select v-model="form.relationship_type" class="w-full rounded-lg border border-amber-200 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                                                    <option value="Partial Amendment">Partial Amendment (Keeps Parent Active)</option>
-                                                    <option value="Full Amendment">Full Amendment (Deactivates Parent)</option>
+                                                    <option value="Partial Amendment">Partial Amendment</option>
+                                                    <option value="Full Amendment">Full Amendment</option>
                                                     <option value="Repeals">Repeals</option>
                                                     <option value="Supersedes">Supersedes</option>
                                                 </select>

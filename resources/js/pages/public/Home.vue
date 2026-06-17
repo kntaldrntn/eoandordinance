@@ -55,7 +55,7 @@ const matchRole = (pivotRole: string | undefined, role: string) => {
         'secretariat member': ['secretariat member', 'secretariat'],
         'lead secretariat': ['lead secretariat'],
         'twg head': ['twg head'],
-        'twg internal': ['twg internal', 'twg'],
+        'twg internal': ['twg internal', 'twg member'],
     };
 
     const candidates = (map as any)[r] || [];
@@ -642,12 +642,12 @@ const getActiveIrrs = (irrs: any[]) => {
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="activeTab !== 'ordinance' && ((selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).length) || getMembersByRole(selectedCommittee, 'Internal Member') !== 'None')">
                                         <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Members</h4>
-                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).join(', ') : getMembersByRole(selectedCommittee, 'Internal Member') }}</p>
+                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).join('\n') : getMembersByRole(selectedCommittee, 'Internal Member') }}</p>
                                     </div>
                                     <div class="space-y-4">
                                         <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="activeTab !== 'ordinance' && ((selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).length) || getMembersByRole(selectedCommittee, 'External Member') !== 'None')">
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Members</h4>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).join(', ') : getMembersByRole(selectedCommittee, 'External Member') }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).join('\n') : getMembersByRole(selectedCommittee, 'External Member') }}</p>
                                         </div>
 
                                         <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="(selectedCommittee.committee_members_simple && (getSimpleByKeywords(selectedCommittee, ['lead secretariat']).length || getSimpleByKeywords(selectedCommittee, ['secretariat member','secretariat']).length)) || getMemberByRole(selectedCommittee, 'Lead Secretariat') !== 'N/A' || getMembersByRole(selectedCommittee, 'Secretariat Member') !== 'None'">
@@ -660,7 +660,7 @@ const getActiveIrrs = (irrs: any[]) => {
 
                                             <div v-if="getMembersByRole(selectedCommittee, 'Secretariat Member') !== 'None'">
                                                 <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Members</p>
-                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['secretariat member','secretariat']).join(', ') : getMembersByRole(selectedCommittee, 'Secretariat Member') }}</p>
+                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['secretariat member','secretariat']).join('\n') : getMembersByRole(selectedCommittee, 'Secretariat Member') }}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -677,54 +677,68 @@ const getActiveIrrs = (irrs: any[]) => {
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div v-if="getMembersByRole(selectedCommittee, 'TWG Internal') !== 'None'">
                                             <p class="text-xs text-blue-600 font-medium mb-1">TWG Internal Members</p>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ getMembersByRole(selectedCommittee, 'TWG Internal') }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ getMembersByRole(selectedCommittee, 'TWG Internal').split(', ').join('\n') }}</p>
                                         </div>
                                         <div v-if="getMembersByRole(selectedCommittee, 'TWG External') !== 'None'">
                                             <p class="text-xs text-blue-600 font-medium mb-1">TWG External Members</p>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ getMembersByRole(selectedCommittee, 'TWG External') }}</p>
+                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ getMembersByRole(selectedCommittee, 'TWG External').split(', ').join('\n') }}</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                                
+
                                     <!-- Sponsorship / Authors (ordinance-specific) split into two cards -->
                                     <div v-if="(
-                                            (selectedCommittee.author_details && (selectedCommittee.author_details.sponsorship_committee || selectedCommittee.author_details.primary_author || selectedCommittee.author_details.co_authors))
-                                            || (selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['primary author','co-author','attested by','committee member']).length)
+                                            (getParsedExt(selectedCommittee.author_details) && (getParsedExt(selectedCommittee.author_details).sponsorship_committee || getParsedExt(selectedCommittee.author_details).primary_author || getParsedExt(selectedCommittee.author_details).introduced_by || getParsedExt(selectedCommittee.author_details).co_authors))
+                                            || (selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['primary author', 'introduced by', 'co-author', 'attested by', 'committee member']).length)
                                         )" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 mb-6">
 
-                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                                            <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Sponsorship</h4>
-                                            <div>
-                                                <div v-if="selectedCommittee.author_details?.sponsorship_committee?.name || (selectedCommittee.committees?.[0]?.registry?.name && !selectedCommittee.author_details?.sponsorship_committee?.name)">
-                                                    <p class="text-xs text-gray-500 font-medium">Sponsorship Committee</p>
-                                                    <p class="text-sm font-bold text-gray-900 mb-3">{{ selectedCommittee.author_details?.sponsorship_committee?.name || selectedCommittee.committees?.[0]?.registry?.name }}</p>
-                                                </div>
+                                            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                                                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Sponsorship</h4>
+                                                <div>
+                                                    <div v-if="getParsedExt(selectedCommittee.author_details)?.sponsorship_committee?.name || (selectedCommittee.committees?.[0]?.registry?.name && !getParsedExt(selectedCommittee.author_details)?.sponsorship_committee?.name)">
+                                                        <p class="text-xs text-gray-500 font-medium">Sponsorship Committee</p>
+                                                        <p class="text-sm font-bold text-gray-900 mb-3">{{ getParsedExt(selectedCommittee.author_details)?.sponsorship_committee?.name || selectedCommittee.committees?.[0]?.registry?.name }}</p>
+                                                    </div>
 
-                                                <div v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).length) || getMembersByRole(selectedCommittee, 'Internal Member') !== 'None'">
-                                                    <p class="text-xs text-gray-500 font-medium">Committee Members</p>
-                                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).join(', ') : getMembersByRole(selectedCommittee, 'Internal Member') }}</p>
+                                                    <div v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).length) || getMembersByRole(selectedCommittee, 'Internal Member') !== 'None'">
+                                                        <p class="text-xs text-gray-500 font-medium">Committee Members</p>
+                                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">
+                                                            {{ 
+                                                                selectedCommittee.committee_members_simple 
+                                                                    ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).map(name => name.trim().toLowerCase() === 'all members' ? name.trim() : 'Hon. ' + name.trim()).join('\n') 
+                                                                    : getMembersByRole(selectedCommittee, 'Internal Member').split(', ').map(name => name.trim().toLowerCase() === 'all members' ? name.trim() : 'Hon. ' + name.trim()).join('\n') 
+                                                            }}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
 
                                         <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                                             <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Authors</h4>
                                             <div>
-                                                <div v-if="selectedCommittee.author_details?.primary_author || getSimpleFirst(selectedCommittee, ['primary author','introduced by'])">
-                                                    <p class="text-xs text-blue-600 font-bold mb-1">Primary Sponsor / Author</p>
-                                                    <p class="text-sm font-bold text-gray-900">{{ selectedCommittee.author_details?.primary_author || getSimpleFirst(selectedCommittee, ['primary author','introduced by']) }}</p>
+                                                <div v-if="getParsedExt(selectedCommittee.author_details)?.primary_author || getSimpleFirst(selectedCommittee, ['Primary Author', 'primary author'])">
+                                                    <p class="text-xs text-blue-600 font-bold mb-1">Primary Author</p>
+                                                    <p class="text-sm font-bold text-gray-900">
+                                                        {{ getParsedExt(selectedCommittee.author_details)?.primary_author?.name || getParsedExt(selectedCommittee.author_details)?.primary_author || getSimpleFirst(selectedCommittee, ['Primary Author', 'primary author']) }}
+                                                    </p>
+                                                </div>
+                                                <div v-else-if="getParsedExt(selectedCommittee.author_details)?.introduced_by || getSimpleFirst(selectedCommittee, ['Introduced By', 'introduced by'])">
+                                                    <p class="text-xs text-blue-600 font-bold mb-1">Introduced By</p>
+                                                    <p class="text-sm font-bold text-gray-900">
+                                                        {{ getParsedExt(selectedCommittee.author_details)?.introduced_by?.name || getParsedExt(selectedCommittee.author_details)?.introduced_by || getSimpleFirst(selectedCommittee, ['Introduced By', 'introduced by']) }}
+                                                    </p>
                                                 </div>
 
-                                                <div v-if="hasValidData(selectedCommittee.author_details?.co_authors) || getSimpleByKeywords(selectedCommittee, ['co-author']).length" class="mt-3">
+                                                <div v-if="hasValidData(getParsedExt(selectedCommittee.author_details)?.co_authors) || getSimpleByKeywords(selectedCommittee, ['co-author']).length" class="mt-3">
                                                     <p class="text-xs text-gray-500 font-bold mb-1">Co-Authors</p>
                                                     <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">
-                                                        <template v-if="hasValidData(selectedCommittee.author_details?.co_authors)">
-                                                            {{ displaySafeArray(selectedCommittee.author_details.co_authors) }}
+                                                        <template v-if="hasValidData(getParsedExt(selectedCommittee.author_details)?.co_authors)">
+                                                            {{ displaySafeArray(getParsedExt(selectedCommittee.author_details).co_authors) }}
                                                         </template>
                                                         <template v-else>
-                                                            {{ getSimpleByKeywords(selectedCommittee, ['co-author']).join(', ') }}
+                                                            {{ getSimpleByKeywords(selectedCommittee, ['co-author']).join('\n') }}
                                                         </template>
                                                     </p>
                                                 </div>
@@ -733,29 +747,61 @@ const getActiveIrrs = (irrs: any[]) => {
                                     </div>
 
                             <div v-if="selectedCommittee.committees[0].type === 'program'" class="space-y-6">
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
-                                        <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
-                                        <p class="text-base font-bold text-blue-900">{{ getLeadOffice(selectedCommittee.departments) }}</p>
-                                    </div>
+                            <!-- Lead + Co-Lead offices side by side -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                                    <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Lead Implementing Office</h4>
+                                    <p class="text-base font-bold text-blue-900">{{ getLeadOffice(selectedCommittee.departments) }}</p>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).length) || getMembersByRole(selectedCommittee, 'Program Internal') !== 'None'">
-                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).join(', ') : getMembersByRole(selectedCommittee, 'Program Internal') }}</p>
-                                    </div>
-                                        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm" v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).length) || getMembersByRole(selectedCommittee, 'Program External') !== 'None'">
-                                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
-                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ selectedCommittee.committee_members_simple ? getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).join(', ') : getMembersByRole(selectedCommittee, 'Program External') }}</p>
-                                    </div>
+                                <!-- ── FIX: show co-lead office when present ── -->
+                                <div
+                                    v-if="selectedCommittee.committees[0].co_lead_office_name"
+                                    class="bg-blue-50/60 border border-blue-100 rounded-xl p-5 shadow-sm"
+                                >
+                                    <h4 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Co-Lead Office</h4>
+                                    <p class="text-base font-bold text-blue-900">
+                                        {{ selectedCommittee.committees[0].co_lead_office_name }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Internal + External members -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div
+                                    class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm"
+                                    v-if="getMembersByRole(selectedCommittee, 'Program Internal') !== 'None'"
+                                >
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">Internal Team Members</h4>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                        {{
+                                            selectedCommittee.committee_members_simple
+                                                ? getSimpleByKeywords(selectedCommittee, ['program internal']).join('\n')
+                                                : getMembersByRole(selectedCommittee, 'Program Internal')
+                                        }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm"
+                                    v-if="getMembersByRole(selectedCommittee, 'Program External') !== 'None'"
+                                >
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b pb-2">External Partners / NGOs</h4>
+                                    <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                        {{
+                                            selectedCommittee.committee_members_simple
+                                                ? getSimpleByKeywords(selectedCommittee, ['program external']).join('\n')
+                                                : getMembersByRole(selectedCommittee, 'Program External')
+                                        }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
+                        </div>
 
-                        
 
-                        
+
+
 
                         <div v-if="activeTab === 'ordinance' && (selectedCommittee.author_details || selectedCommittee.external_institutions || getExternalMembersDisplay(selectedCommittee) || getExternalNgosDisplay(selectedCommittee) || getExternalOthersDisplay(selectedCommittee))" class="space-y-6">
                             <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
@@ -785,19 +831,34 @@ const getActiveIrrs = (irrs: any[]) => {
                                 <div v-if="(getExternalMembersDisplay(selectedCommittee) || getExternalNgosDisplay(selectedCommittee) || getExternalOthersDisplay(selectedCommittee)) || hasValidData(selectedCommittee.external_institutions) || ((selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['external member','ngo partner','other organization']).length) || getMembersByRole(selectedCommittee, 'External Member') !== 'None')" class="pt-2 mt-2">
                                     <template v-if="activeTab === 'ordinance'">
                                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                            <div v-if="(getMembersByPivot(selectedCommittee, ['External Member']).length > 0) || getExternalMembersDisplay(selectedCommittee).length">
+                                            <!-- Members Column -->
+                                            <div v-if="getMembersByPivotExact(selectedCommittee, ['External Member']).length > 0 || (getParsedExt(selectedCommittee.external_institutions)?.members && getParsedExt(selectedCommittee.external_institutions).members.length > 0)">
                                                 <p class="text-xs text-gray-500 font-medium">Members</p>
-                                                <p class="text-sm  text-gray-900 whitespace-pre-wrap">{{ getMembersByPivotExact(selectedCommittee, ['External Member']).length ? getMembersByPivotExact(selectedCommittee, ['External Member']).join(', ') : getExternalMembersDisplay(selectedCommittee) }}</p>
+                                                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ 
+                                                    getMembersByPivotExact(selectedCommittee, ['External Member']).length 
+                                                    ? getMembersByPivotExact(selectedCommittee, ['External Member']).join('\n') 
+                                                    : getParsedExt(selectedCommittee.external_institutions).members.join('\n') 
+                                                }}</p>
                                             </div>
 
-                                            <div v-if="(getMembersByPivot(selectedCommittee, ['NGO Partner']).length > 0) || getExternalNgosDisplay(selectedCommittee).length">
+                                            <!-- NGO's Column -->
+                                            <div v-if="getMembersByPivotExact(selectedCommittee, ['NGO Partner']).length > 0 || (getParsedExt(selectedCommittee.external_institutions)?.ngos && getParsedExt(selectedCommittee.external_institutions).ngos.length > 0)">
                                                 <p class="text-xs text-gray-500 font-medium">NGO's</p>
-                                                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ getMembersByPivotExact(selectedCommittee, ['NGO Partner']).length ? getMembersByPivotExact(selectedCommittee, ['NGO Partner']).join(', ') : getExternalNgosDisplay(selectedCommittee) }}</p>
+                                                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ 
+                                                    getMembersByPivotExact(selectedCommittee, ['NGO Partner']).length 
+                                                    ? getMembersByPivotExact(selectedCommittee, ['NGO Partner']).join('\n') 
+                                                    : getParsedExt(selectedCommittee.external_institutions).ngos.join('\n') 
+                                                }}</p>
                                             </div>
 
-                                            <div v-if="(getMembersByPivot(selectedCommittee, ['Other Organization']).length > 0) || getExternalOthersDisplay(selectedCommittee).length">
+                                            <!-- Other Organizations Column -->
+                                            <div v-if="getMembersByPivotExact(selectedCommittee, ['Other Organization']).length > 0 || (getParsedExt(selectedCommittee.external_institutions)?.others && getParsedExt(selectedCommittee.external_institutions).others.length > 0)">
                                                 <p class="text-xs text-gray-500 font-medium">Other Organizations</p>
-                                                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ getMembersByPivotExact(selectedCommittee, ['Other Organization']).length ? getMembersByPivotExact(selectedCommittee, ['Other Organization']).join(', ') : getExternalOthersDisplay(selectedCommittee) }}</p>
+                                                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ 
+                                                    getMembersByPivotExact(selectedCommittee, ['Other Organization']).length 
+                                                    ? getMembersByPivotExact(selectedCommittee, ['Other Organization']).join('\n') 
+                                                    : getParsedExt(selectedCommittee.external_institutions).others.join('\n') 
+                                                }}</p>
                                             </div>
                                         </div>
                                     </template>

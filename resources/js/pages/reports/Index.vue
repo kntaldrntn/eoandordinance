@@ -107,7 +107,12 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
 
                     <div>
                         <label class="mb-1 block text-xs font-bold uppercase transition-opacity" :class="filterForm.type === 'ordinance' ? 'text-gray-400 opacity-60' : 'text-gray-500'">EO Structure Type</label>
-                        <select v-model="filterForm.structure_type" @change="applyFilters" :disabled="filterForm.type === 'ordinance'" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors">
+                        <select 
+                            v-model="filterForm.structure_type" 
+                            @change="() => { if (filterForm.structure_type !== '') filterForm.type = 'eo'; applyFilters(); }" 
+                            :disabled="filterForm.type === 'ordinance'" 
+                            class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
                             <option value="">All Structures</option>
                             <option value="none">Standard EO</option>
                             <option value="council">Council / Committee / TWG</option>

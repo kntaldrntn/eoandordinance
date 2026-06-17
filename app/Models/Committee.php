@@ -12,7 +12,8 @@ class Committee extends Model
     protected $fillable = [
         'name',
         'type', // e.g., 'council', 'program', 'ordinance_sponsors'
-        'registry_id'
+        'registry_id',
+        'co_lead_office_id', // ← ADDED: was missing, causing silent NULL on create()
     ];
 
     // The people inside this committee
@@ -41,5 +42,10 @@ class Committee extends Model
     {
         return $this->belongsToMany(Ordinance::class, 'ordinance_committee', 'committee_id', 'ordinance_id')
                     ->withTimestamps();
+    }
+
+        public function coLeadOffice(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Department::class, 'co_lead_office_id');
     }
 }
