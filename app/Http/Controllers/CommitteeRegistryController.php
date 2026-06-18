@@ -49,10 +49,24 @@ class CommitteeRegistryController extends Controller
     {
         $registry = CommitteeRegistry::findOrFail($id);
         
-        // Ensure member_ids is always an array even if empty
+        // This is the array of IDs in the exact order you clicked them
         $memberIds = $request->input('member_ids', []);
         
-        $registry->members()->sync($memberIds);
-        return back()->with('success', 'Members updated successfully.');
+        $syncData = [];
+        foreach (array_values($memberIds) as $index => $memberId) {
+            if ($index === 0) {
+                $role = 'Chairman';
+            } elseif ($index === 1) {
+                $role = 'Vice Chairman';
+            } else {
+                $role = 'Member';
+            }
+            
+            // Attach the role directly to the pivot record
+            $syncData[$memberId] = ['role' => $role];
+        }
+        
+        $registry->members()->sync($syncData);
+        return back()->with('success', 'Members and roles updated successfully.');
     }
 }

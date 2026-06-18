@@ -432,7 +432,8 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                     <Building2 class="w-5 h-5" style="color:#FEC41B" /> Implementing Departments Overview
                 </h2>
                 <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    
+                    <div v-if="top_departments && top_departments.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div v-for="(dept, index) in top_departments" :key="dept.id" class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-sm transition-all">
                             <span 
                                 class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-full shrink-0 bg-white shadow-sm border border-gray-100"
@@ -452,9 +453,13 @@ const breadcrumbs = [{ title: 'Dashboard', href: '/dashboard' }];
                             </div>
                         </div>
                     </div>
+
+                    <div v-else class="text-center py-8">
+                        <p class="text-xs text-gray-400 font-medium">No implementing department data found.</p>
+                    </div>
+
                 </div>
             </div>
-
         </div>
     </AppLayout>
 </template>

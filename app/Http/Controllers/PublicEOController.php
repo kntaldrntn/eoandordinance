@@ -40,13 +40,17 @@ class PublicEOController extends Controller
                     $q->where('ordinance_number', 'LIKE', "%{$search}%")
                       ->orWhere('title', 'LIKE', "%{$search}%")
                       ->orWhere('subject_matter', 'LIKE', "%{$search}%")
-                      // 🚀 ADD THIS NEW LINE: Search inside the PDF text!
                       ->orWhere('document_content', 'LIKE', "%{$search}%")
-                      // Search inside the linked departments
+                      
+                      // 🚀 FIXED: Search inside attached IRR document text ONLY if active!
+                      ->orWhereHas('implementingRules', function ($irrQuery) use ($search) {
+                          $irrQuery->where('document_content', 'LIKE', "%{$search}%")
+                                   ->where('is_active', true); // <-- This strict check prevents searching disabled IRRs
+                      })
+                      
                       ->orWhereHas('departments', function ($deptQuery) use ($search) {
                           $deptQuery->where('name', 'LIKE', "%{$search}%");
                       })
-                      // 🚀 FIX: Search inside the linked committee members (Authors, NGOs, etc)
                       ->orWhereHas('committees.members', function ($memberQuery) use ($search) {
                           $memberQuery->where('name', 'LIKE', "%{$search}%");
                       });

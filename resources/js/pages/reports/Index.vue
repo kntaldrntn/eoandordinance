@@ -100,8 +100,8 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Document Type</label>
                         <select v-model="filterForm.type" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="all">Combined (EOs & Ordinances)</option>
-                            <option value="eo">Executive Orders Only</option>
-                            <option value="ordinance">Ordinances Only</option>
+                            <option value="eo">Executive Orders</option>
+                            <option value="ordinance">Ordinances</option>
                         </select>
                     </div>
 
@@ -132,8 +132,8 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">IRR Attachment</label>
                         <select v-model="filterForm.has_irr" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Any (Show All)</option>
-                            <option value="yes">With IRR Only</option>
-                            <option value="no">Without IRR Only</option>
+                            <option value="yes">With IRR</option>
+                            <option value="no">Without IRR</option>
                         </select>
                     </div>
 

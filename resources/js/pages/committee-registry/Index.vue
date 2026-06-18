@@ -87,7 +87,23 @@ function openEditDialog(item: any) {
 
 function openMemberEditor(committee: any) {
     selectedCommittee.value = committee;
-    memberForm.member_ids = committee.members ? committee.members.map((m: any) => m.id) : [];
+    
+    // Sort so Chairman is index 0, Vice is index 1
+    if (committee.members) {
+        const sortedMembers = [...committee.members].sort((a: any, b: any) => {
+            const roleA = a.pivot?.role || 'Member';
+            const roleB = b.pivot?.role || 'Member';
+            if (roleA === 'Chairman') return -1;
+            if (roleB === 'Chairman') return 1;
+            if (roleA === 'Vice Chairman') return -1;
+            if (roleB === 'Vice Chairman') return 1;
+            return 0;
+        });
+        memberForm.member_ids = sortedMembers.map((m: any) => m.id);
+    } else {
+        memberForm.member_ids = [];
+    }
+    
     memberSearch.value = '';
     showMemberModal.value = true;
 }
@@ -299,12 +315,19 @@ const getDeptCode = (titleStr?: string) => {
                                 class="flex items-center gap-3 p-3 hover:bg-white rounded-lg transition border-b border-gray-100 last:border-0 cursor-pointer"
                             >
                                 <input type="checkbox" :value="member.id" v-model="memberForm.member_ids" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
-                                <div class="flex flex-col">
-                                    <span class="text-sm font-bold text-gray-800">
-                                        {{ member.name }}
-                                        <span v-if="getDeptCode(member.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(member.title) }})</span>
+                                <div class="flex flex-col w-full">
+                                    <span class="text-sm font-bold text-gray-800 flex justify-between items-center w-full pr-4">
+                                        <span>
+                                            {{ member.name }}
+                                            <span v-if="getDeptCode(member.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(member.title) }})</span>
+                                        </span>
+                                        
+                                        <span v-if="memberForm.member_ids.indexOf(member.id) === 0" class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">CHAIRMAN</span>
+                                        <span v-else-if="memberForm.member_ids.indexOf(member.id) === 1" class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">VICE CHAIRMAN</span>
+                                        <span v-else-if="memberForm.member_ids.indexOf(member.id) > 1" class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-md tracking-widest shrink-0">MEMBER</span>
                                     </span>
-                                    <span v-if="member.type" class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="member.type.includes('Internal') ? 'text-blue-600' : 'text-green-600'">
+                                    
+                                    <span v-if="member.type" class="text-[10px] font-bold uppercase tracking-wider mt-1" :class="member.type.includes('Internal') ? 'text-blue-600' : 'text-green-600'">
                                         {{ member.type }}
                                     </span>
                                 </div>

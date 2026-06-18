@@ -10,7 +10,10 @@ class CommitteeRegistry extends Model
     use HasFactory;
     protected $fillable = ['name'];
 
-    public function members() {
-        return $this->belongsToMany(CommitteeMember::class, 'committee_member_registry');
+    public function members()
+    {
+        return $this->belongsToMany(CommitteeMember::class, 'committee_member_registry')
+                    ->withPivot('role')
+                    ->withTimestamps();
     }
 }

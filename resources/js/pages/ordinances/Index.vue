@@ -1056,7 +1056,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                     </div>
 
                                     <div class="border-t border-gray-100 pt-4 mt-4">
-                                        <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Mother Code <span class="text-gray-400 font-normal">(Optional)</span></label>
+                                        <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Subject Code <span class="text-gray-400 font-normal">(Optional)</span></label>
                                         <select v-model="form.ordinance_code_id" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                                             <option value="">None</option>
                                             <option v-for="code in ordinance_codes" :key="code.id" :value="code.id">

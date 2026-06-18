@@ -30,6 +30,7 @@ import {
     FileSpreadsheet,
     BookUser,
     FolderPen,
+    Folder,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -127,6 +128,12 @@ const settingsItems = computed(() => {
             title: 'Departments Management',
             href: route('departments.index'),
             icon: Building2,
+            roles: ['system_admin']
+        },
+        {
+            title: 'Ordinance Codes',
+            href: route('ordinance-codes.index'),
+            icon: Folder,
             roles: ['system_admin']
         },
         {

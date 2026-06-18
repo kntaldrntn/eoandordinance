@@ -639,6 +639,16 @@ class OrdinanceController extends Controller
         ]);
 
         $path = $request->file('file')->store('irrs', 'public');
+        $extractedText = null;
+
+        try {
+            $absolutePath = storage_path('app/public/' . $path);
+            $extractedText = (new Pdf('C:/poppler/Library/bin/pdftotext.exe'))
+                ->setPdf($absolutePath)
+                ->text();
+        } catch (\Exception $e) {
+            $extractedText = null;  
+        }
 
         DB::table('implementing_rules_and_regulations')->insert([
             'ordinance_id' => $ordinance->id,
@@ -647,6 +657,7 @@ class OrdinanceController extends Controller
             'external_institutions' => json_encode($request->external_institutions ?? ['members' => [], 'ngos' => [], 'others' => []]),
             'status' => $request->status,
             'is_active' => true,
+            'document_content' => $extractedText,
             'file_path' => $path,
             'created_at' => now(),
             'updated_at' => now(),

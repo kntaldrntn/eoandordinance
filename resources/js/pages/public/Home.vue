@@ -381,6 +381,39 @@ const getActiveIrrs = (irrs: any[]) => {
     if (!Array.isArray(irrs)) return [];
     return irrs.filter(irr => irr.is_active == true || irr.is_active == 1);
 };
+
+// --- ARRAY-BASED ROLE FORMATTER ---
+const formatStructuredMembers = (namesArray: string[]) => {
+    if (!namesArray || namesArray.length === 0 || (namesArray.length === 1 && namesArray[0] === 'None')) return '';
+    
+    let output = '';
+    let membersList: string[] = [];
+
+    namesArray.forEach((name, index) => {
+        const cleanName = name.trim();
+        if (cleanName.toLowerCase() === 'all members') {
+            output += cleanName + '\n';
+            return;
+        }
+        
+        if (index === 0) {
+            output += 'Chairman: Hon. ' + cleanName + '\n';
+        } else if (index === 1) {
+            output += 'Vice Chairman: Hon. ' + cleanName + '\n';
+        } else {
+            // Collect the rest into a separate array instead of printing them immediately
+            membersList.push('Hon. ' + cleanName);
+        }
+    });
+
+    // If there are standard members, group them under one header!
+    if (membersList.length > 0) {
+        output += 'Members:\n' + membersList.join('\n');
+    }
+    
+    return output.trim();
+};
+
 </script>
 
 <template>
@@ -426,124 +459,118 @@ const getActiveIrrs = (irrs: any[]) => {
             <div v-if="records.data.length > 0" class="grid gap-6">
 
                 <div v-for="item in records.data" :key="item.id"
-                    class="group rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-6 relative overflow-hidden"
-                    :class="getCardClass(item.is_active)"
+                    class="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-200 p-5 relative overflow-hidden"
+                    :class="!item.is_active ? 'opacity-80 grayscale-[0.3]' : ''"
                 >
+                    <!-- Status Indicator Bar on Left -->
                     <div class="absolute left-0 top-0 bottom-0 w-1.5 transition-colors"
                         :class="item.is_active ? 'bg-green-500' : 'bg-gray-400'">
                     </div>
 
-                    <div class="flex flex-col md:flex-row md:items-start gap-6 pl-2">
-                        <div class="flex-1">
-
-                            <div class="flex flex-wrap items-center gap-3 mb-3">
-                                <span class="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-gray-200">
+                    <div class="flex flex-col md:flex-row md:items-start justify-between gap-5 pl-2">
+                        
+                        <!-- Left Side: Content -->
+                        <div class="flex-1 w-full min-w-0">
+                            
+                            <!-- Tags Row -->
+                            <div class="flex flex-wrap items-center gap-2 mb-3">
+                                <span class="inline-flex items-center justify-center bg-gray-50 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-gray-200 shadow-sm">
                                     {{ activeTab === 'eo' ? item.eo_number : item.ordinance_number }}
                                 </span>
 
-                                <span v-if="item.is_active" class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
+                                <span v-if="item.is_active" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
                                     <CheckCircle2 class="w-3 h-3" /> In Effect
                                 </span>
-                                <span v-else class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                                <span v-else class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-gray-50 text-gray-500 border border-gray-200 shadow-sm">
                                     <XCircle class="w-3 h-3" /> Inactive
                                 </span>
 
-                                <!-- <span :class="['px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ring-1 ring-inset', getStatusColor(item.status.name)]">
-                                    {{ item.status.name }}
-                                </span> -->
-
-                                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ring-1 ring-inset bg-white text-gray-800 border-gray-300 ring-gray-900/10">
+                                <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-white text-gray-800 border border-gray-300 shadow-sm">
                                     NEW
                                 </span>
-
-                                <!-- <div class="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                                    <span class="flex items-center gap-1">
-                                        <Calendar class="w-3.5 h-3.5" />
-                                        {{ activeTab === 'eo' ? 'Issued' : 'Enacted' }}: {{ activeTab === 'eo' ? formatDate(item.date_issued) : formatDate(item.date_enacted) }}
-                                    </span>
-                                    <span class="text-gray-300">|</span>
-                                    <span class="text-blue-600">
-                                        Effectivity: {{ formatDate(item.effectivity_date) }}
-                                    </span>
-                                </div> -->
                             </div>
 
-                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-3 leading-snug">
+                            <!-- Crisp Title -->
+                            <h3 class="text-lg md:text-xl font-bold text-gray-900 group-hover:text-blue-700 transition-colors mb-3 leading-snug pr-2">
                                 {{ item.title }}
                             </h3>
 
-                            <div v-if="activeTab === 'eo' && item.declaration" class="mb-4 pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 rounded-r-lg pr-4">
-                                <p class="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Declaration / Directive:</p>
-                                <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                            <!-- Declaration/Remarks block -->
+                            <div v-if="activeTab === 'eo' && item.declaration" class="mb-3 pl-3 border-l-4 border-blue-400 bg-blue-50/40 py-2 rounded-r-lg pr-3">
+                                <p class="text-[10px] font-bold text-blue-800 uppercase tracking-widest mb-0.5">Declaration / Directive:</p>
+                                <p class="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-medium">
                                     {{ item.declaration }}
                                 </p>
                             </div>
 
-                            <div v-if="item.remarks" class="mb-4 pl-3 border-l-2 border-gray-300 bg-gray-50/50 py-1">
-                                <p class="text-sm text-gray-600 italic">
+                            <div v-if="item.remarks" class="mb-3 pl-3 border-l-4 border-gray-300 bg-gray-50 py-2 rounded-r-lg pr-3">
+                                <p class="text-xs text-gray-600 italic font-medium">
                                     "{{ item.remarks }}"
                                 </p>
                             </div>
 
-                            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500 mt-2">
+                            <!-- Metadata Row (Sponsors, Authors, etc) -->
+                            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-600 mt-1 font-medium">
                                 <div v-if="activeTab === 'eo'" class="flex items-center gap-1.5">
-                                    <Building2 class="w-4 h-4" />
-                                    {{ getLeadOffice(item.departments) }}
+                                    <Building2 class="w-3.5 h-3.5 text-gray-400" />
+                                    <span>Lead: <span class="text-gray-900 font-bold">{{ getLeadOffice(item.departments) }}</span></span>
                                 </div>
                                 <div v-else class="flex items-center gap-1.5">
-                                    <UserCheck class="w-4 h-4" />
-                                    {{ getSponsors(item) }}
+                                    <UserCheck class="w-3.5 h-3.5 text-gray-400" />
+                                    <span>Author/Sponsor: <span class="text-gray-900 font-bold">{{ getSponsors(item) }}</span></span>
                                 </div>
+                            </div>
 
-                                <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="flex items-center gap-1.5 text-blue-600 font-medium">
-                                    <Paperclip class="w-4 h-4" />
-                                    {{ getActiveIrrs(item.implementing_rules).length }} IRR Attached
-                                </div>
-
-                                <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="w-full mt-3 pl-4 border-l-2 border-blue-100">
-                                    <p class="text-[10px] uppercase font-bold text-gray-400 mb-1">Implementing Rules:</p>
-                                    <div v-for="irr in getActiveIrrs(item.implementing_rules)" :key="irr.id" class="flex items-center justify-between group/irr py-1">
+                            <!-- Compact Beautiful IRR Box -->
+                            <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="w-full mt-4 bg-blue-50/50 rounded-lg p-3 border border-blue-100 shadow-inner">
+                                <p class="text-[10px] uppercase font-extrabold text-blue-800 mb-2 flex items-center gap-1.5">
+                                    <Paperclip class="w-3.5 h-3.5" /> 
+                                    Attached Implementing Rules ({{ getActiveIrrs(item.implementing_rules).length }})
+                                </p>
+                                
+                                <div class="space-y-1.5">
+                                    <div v-for="irr in getActiveIrrs(item.implementing_rules)" :key="irr.id" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2 rounded-md border border-blue-100 shadow-sm hover:shadow transition-shadow">
                                         <div class="flex items-center gap-2">
-                                            <FileText class="w-3 h-3 text-blue-400" />
-                                            <span class="text-xs text-gray-600">
+                                            <div class="p-1.5 bg-blue-50 rounded shrink-0">
+                                                <FileText class="w-3.5 h-3.5 text-blue-600" />
+                                            </div>
+                                            <span class="text-xs font-bold text-gray-800 leading-tight">
                                                 {{ irr.status }}
-                                                <span v-if="irr.lead_office" class="text-gray-400">({{ irr.lead_office.name }})</span>
+                                                <span v-if="irr.lead_office" class="text-gray-500 font-normal ml-1">({{ irr.lead_office.name }})</span>
                                             </span>
                                         </div>
-                                        <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-colors">
-                                            <Eye class="w-3 h-3" /> View
+                                        <a v-if="irr.file_url" :href="irr.file_url" target="_blank" class="shrink-0 flex items-center justify-center gap-1 px-2.5 py-1 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white rounded border border-blue-200 hover:border-blue-600 transition-all">
+                                            <Eye class="w-3 h-3" /> Read
                                         </a>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="flex flex-wrap gap-4 mt-5">
-                                <button
-                                    v-if="(activeTab === 'eo' && item.committees && item.committees.length > 0) || (activeTab === 'ordinance' && (hasAuthorDetails(item) || (item.committees && item.committees.length > 0)))"
-                                    @click="openCommitteeModal(item)"
-                                    class="text-xs font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors"
-                                >
-                                    <Users class="w-3.5 h-3.5" />
-                                    <template v-if="activeTab === 'eo' || (activeTab === 'ordinance' && item.committees && item.committees.length > 0)">
-                                        View {{ (item.committees && item.committees[0] && (item.committees[0].type === 'council' || item.committees[0].type === 'ordinance_sponsors')) ? 'Committee Members' : 'Program Details' }}
-                                    </template>
-                                    <template v-else>
-                                        View Authors & Sponsors
-                                    </template>
-                                </button>
-                            </div>
-
-                            <div v-show="expandedId === item.id" class="mt-4">
+                            <!-- Timeline -->
+                            <div v-show="expandedId === item.id" class="mt-4 border-t border-gray-100 pt-4">
                                 <TransparencyTimeline :timeline="item.public_timeline" />
                             </div>
-
                         </div>
 
-                        <div class="mt-4 md:mt-0 md:self-start">
-                            <a :href="item.file_url" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm">
+                        <!-- Right Side: Action Buttons -->
+                        <div class="mt-4 md:mt-0 flex flex-row md:flex-col gap-2 shrink-0 md:w-36">
+                            
+                            <!-- Primary Action: View PDF -->
+                            <a v-if="item.file_url" :href="item.file_url" target="_blank" 
+                            class="flex items-center justify-center gap-2 px-3 py-3 w-full rounded-lg bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition-all">
                                 <Eye class="w-4 h-4" />
-                                <span class="hidden md:inline">PDF</span>
+                                <span>View PDF</span>
                             </a>
+
+                            <!-- Secondary Action: View Details -->
+                            <button
+                                v-if="(activeTab === 'eo' && item.committees && item.committees.length > 0) || (activeTab === 'ordinance' && (hasAuthorDetails(item) || (item.committees && item.committees.length > 0)))"
+                                @click="openCommitteeModal(item)"
+                                class="flex items-center justify-center gap-2 px-3 py-3 w-full rounded-lg bg-white border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 transition-all"
+                            >
+                                <Users class="w-4 h-4 text-gray-500" />
+                                <span>{{ (item.committees && item.committees[0] && (item.committees[0].type === 'council' || item.committees[0].type === 'ordinance_sponsors')) ? 'Committee' : 'Program' }}</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -707,8 +734,8 @@ const getActiveIrrs = (irrs: any[]) => {
                                                         <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">
                                                             {{ 
                                                                 selectedCommittee.committee_members_simple 
-                                                                    ? getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).map(name => name.trim().toLowerCase() === 'all members' ? name.trim() : 'Hon. ' + name.trim()).join('\n') 
-                                                                    : getMembersByRole(selectedCommittee, 'Internal Member').split(', ').map(name => name.trim().toLowerCase() === 'all members' ? name.trim() : 'Hon. ' + name.trim()).join('\n') 
+                                                                    ? formatStructuredMembers(getSimpleByKeywords(selectedCommittee, ['committee member','internal member'])) 
+                                                                    : formatStructuredMembers(getMembersByRole(selectedCommittee, 'Internal Member').split(', '))
                                                             }}
                                                         </p>
                                                     </div>
