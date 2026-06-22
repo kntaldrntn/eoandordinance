@@ -53,6 +53,18 @@ class OrdinanceController extends Controller
             $query->where('is_active', $request->is_active === 'active');
         }
 
+        if ($request->filled('ordinance_code_id') && $request->ordinance_code_id !== 'all') {
+            $query->where('ordinance_code_id', $request->ordinance_code_id);
+        }
+
+        if ($request->filled('has_irr') && $request->has_irr !== 'all') {
+            if ($request->has_irr === 'with') {
+                $query->whereHas('implementingRules');
+            } elseif ($request->has_irr === 'without') {
+                $query->whereDoesntHave('implementingRules');
+            }
+        }
+
         $employees = CityEmployee::with('department')->where('state', 1)->get()->map(function($e) {
             return [
                 'pmis_id' => $e->pmis_id,
@@ -104,7 +116,7 @@ class OrdinanceController extends Controller
             'peopleRegistry' => $peopleRegistry,
             'committeeRegistries' => CommitteeRegistry::with('members')->get(),
             'ordinance_codes' => OrdinanceCode::orderBy('name')->get(),
-            'filters' => $request->only(['search', 'year', 'is_active']),
+            'filters' => $request->only(['search', 'year', 'is_active', 'ordinance_code_id', 'has_irr']),
             'available_years' => $years,
             'flash' => [
                 'success' => session('success'),

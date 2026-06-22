@@ -23,7 +23,13 @@ const props = defineProps<{
     peopleRegistry: Array<{ name: string; title: string; type: string }>;
     committeeRegistries: Array<{ id: number; name: string; members: Array<any> }>;
     ordinance_codes: Array<{ id: number; name: string }>;
-    filters?: { search?: string; year?: string; is_active?: string };
+    filters?: { 
+        search?: string; 
+        year?: string; 
+        is_active?: string; 
+        ordinance_code_id?: string;
+        has_irr?: string;          
+    };
     available_years: number[];
     flash?: { success?: string; error?: string };
 }>();
@@ -31,6 +37,8 @@ const props = defineProps<{
 const searchTerm = ref(props.filters?.search || '');
 const filterYear = ref(props.filters?.year || 'all');
 const filterActive = ref(props.filters?.is_active || 'all');
+const filterCode = ref(props.filters?.ordinance_code_id || 'all');
+const filterIrr = ref(props.filters?.has_irr || 'all');
 const isLoading = ref(false);
 let searchTimeout: ReturnType<typeof setTimeout>;
 
@@ -38,12 +46,28 @@ const performSearch = () => {
     clearTimeout(searchTimeout);
     isLoading.value = true;
     searchTimeout = setTimeout(() => {
-        router.get(route('ordinances.index'), { search: searchTerm.value, year: filterYear.value, is_active: filterActive.value }, { preserveState: true, preserveScroll: true, onFinish: () => isLoading.value = false });
+        router.get(route('ordinances.index'), { 
+            search: searchTerm.value, 
+            year: filterYear.value, 
+            is_active: filterActive.value,
+            ordinance_code_id: filterCode.value, // Added
+            has_irr: filterIrr.value             // Added
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            onFinish: () => isLoading.value = false
+        });
     }, 300);
 };
 
-watch([searchTerm, filterYear, filterActive], performSearch);
-const clearSearch = () => { searchTerm.value = ''; filterYear.value = 'all'; filterActive.value = 'all'; };
+watch([searchTerm, filterYear, filterActive, filterCode, filterIrr], performSearch);
+const clearSearch = () => {
+    searchTerm.value = '';
+    filterYear.value = 'all';
+    filterActive.value = 'all';
+    filterCode.value = 'all';
+    filterIrr.value = 'all';
+};
 const goToPage = (url: string) => { if (url) router.get(url, { search: searchTerm.value, year: filterYear.value, is_active: filterActive.value }, { preserveState: true, preserveScroll: false }); };
 
 const notyf = new Notyf({ duration: 3000, position: { x: 'right', y: 'top' } });
@@ -884,14 +908,27 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                 <div class="flex items-center justify-between xl:justify-end gap-4 w-full xl:w-auto flex-wrap sm:flex-nowrap">
                     <div class="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 flex-1 sm:flex-none">
                         <Filter class="w-4 h-4 text-gray-400 ml-2 hidden sm:block" />
+                        
                         <select v-model="filterYear" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">
                             <option value="all">Years</option>
                             <option v-for="y in available_years" :key="y" :value="y">{{ y }}</option>
                         </select>
-                        <select v-model="filterActive" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 w-full sm:w-auto outline-none">
+                        
+                        <select v-model="filterActive" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">
                             <option value="all">Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
+                        </select>
+
+                        <select v-model="filterCode" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">
+                            <option value="all">All Subject Codes</option>
+                            <option v-for="code in ordinance_codes" :key="code.id" :value="code.id">{{ code.name }}</option>
+                        </select>
+
+                        <select v-model="filterIrr" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 w-full sm:w-auto outline-none">
+                            <option value="all">IRR Status</option>
+                            <option value="with">With IRR</option>
+                            <option value="without">Without IRR</option>
                         </select>
                     </div>
 

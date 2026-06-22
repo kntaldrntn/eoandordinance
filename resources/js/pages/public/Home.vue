@@ -513,7 +513,7 @@ const formatStructuredMembers = (namesArray: string[]) => {
                             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-600 mt-1 font-medium">
                                 <div v-if="activeTab === 'eo'" class="flex items-center gap-1.5">
                                     <Building2 class="w-3.5 h-3.5 text-gray-400" />
-                                    <span>Lead: <span class="text-gray-900 font-bold">{{ getLeadOffice(item.departments) }}</span></span>
+                                    <span><span class="text-gray-900 font-bold">{{ getLeadOffice(item.departments) }}</span></span>
                                 </div>
                                 <div v-else class="flex items-center gap-1.5">
                                     <UserCheck class="w-3.5 h-3.5 text-gray-400" />
@@ -525,7 +525,7 @@ const formatStructuredMembers = (namesArray: string[]) => {
                             <div v-if="getActiveIrrs(item.implementing_rules).length > 0" class="w-full mt-4 bg-blue-50/50 rounded-lg p-3 border border-blue-100 shadow-inner">
                                 <p class="text-[10px] uppercase font-extrabold text-blue-800 mb-2 flex items-center gap-1.5">
                                     <Paperclip class="w-3.5 h-3.5" /> 
-                                    Attached Implementing Rules ({{ getActiveIrrs(item.implementing_rules).length }})
+                                    Rules and Regulations ({{ getActiveIrrs(item.implementing_rules).length }})
                                 </p>
                                 
                                 <div class="space-y-1.5">
