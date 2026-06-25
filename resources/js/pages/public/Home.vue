@@ -397,9 +397,9 @@ const formatStructuredMembers = (namesArray: string[]) => {
         }
         
         if (index === 0) {
-            output += 'Chairman: Hon. ' + cleanName + '\n';
+            output += 'Chairperson: Hon. ' + cleanName + '\n';
         } else if (index === 1) {
-            output += 'Vice Chairman: Hon. ' + cleanName + '\n';
+            output += 'Vice Chairperson: Hon. ' + cleanName + '\n';
         } else {
             // Collect the rest into a separate array instead of printing them immediately
             membersList.push('Hon. ' + cleanName);
@@ -729,15 +729,26 @@ const formatStructuredMembers = (namesArray: string[]) => {
                                                         <p class="text-sm font-bold text-gray-900 mb-3">{{ getParsedExt(selectedCommittee.author_details)?.sponsorship_committee?.name || selectedCommittee.committees?.[0]?.registry?.name }}</p>
                                                     </div>
 
-                                                    <div v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['committee member','internal member']).length) || getMembersByRole(selectedCommittee, 'Internal Member') !== 'None'">
+                                                    <div v-if="(selectedCommittee.committee_members_simple && getSimpleByKeywords(selectedCommittee, ['chairperson', 'vice chairperson', 'committee member', 'internal member']).length) || getMembersByRole(selectedCommittee, 'Internal Member') !== 'None'">
                                                         <p class="text-xs text-gray-500 font-medium">Committee Members</p>
-                                                        <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">
-                                                            {{ 
-                                                                selectedCommittee.committee_members_simple 
-                                                                    ? formatStructuredMembers(getSimpleByKeywords(selectedCommittee, ['committee member','internal member'])) 
-                                                                    : formatStructuredMembers(getMembersByRole(selectedCommittee, 'Internal Member').split(', '))
-                                                            }}
-                                                        </p>
+
+                                                        <template v-if="selectedCommittee.committee_members_simple">
+                                                            <div v-if="getSimpleFirst(selectedCommittee, ['chairperson'])" class="mt-1">
+                                                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Chairperson</p>
+                                                                <p class="text-sm font-bold text-gray-900">Hon. {{ getSimpleFirst(selectedCommittee, ['chairperson']) }}</p>
+                                                            </div>
+                                                            <div v-if="getSimpleFirst(selectedCommittee, ['vice chairperson'])" class="mt-2">
+                                                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Vice Chairperson</p>
+                                                                <p class="text-sm font-bold text-gray-900">Hon. {{ getSimpleFirst(selectedCommittee, ['vice chairperson']) }}</p>
+                                                            </div>
+                                                            <div v-if="getSimpleByKeywords(selectedCommittee, ['committee member', 'internal member']).length" class="mt-2">
+                                                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Members</p>
+                                                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-0.5">Hon. {{ getSimpleByKeywords(selectedCommittee, ['committee member', 'internal member']).join('\nHon. ') }}</p>
+                                                            </div>
+                                                        </template>
+                                                        <template v-else>
+                                                            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-1">{{ formatStructuredMembers(getMembersByRole(selectedCommittee, 'Internal Member').split(', ')) }}</p>
+                                                        </template>
                                                     </div>
                                                 </div>
                                             </div>

@@ -88,15 +88,15 @@ function openEditDialog(item: any) {
 function openMemberEditor(committee: any) {
     selectedCommittee.value = committee;
     
-    // Sort so Chairman is index 0, Vice is index 1
+    // Sort so Chairperson is index 0, Vice is index 1
     if (committee.members) {
         const sortedMembers = [...committee.members].sort((a: any, b: any) => {
             const roleA = a.pivot?.role || 'Member';
             const roleB = b.pivot?.role || 'Member';
-            if (roleA === 'Chairman') return -1;
-            if (roleB === 'Chairman') return 1;
-            if (roleA === 'Vice Chairman') return -1;
-            if (roleB === 'Vice Chairman') return 1;
+            if (roleA === 'Chairperson') return -1;
+            if (roleB === 'Chairperson') return 1;
+            if (roleA === 'Vice Chairperson') return -1;
+            if (roleB === 'Vice Chairperson') return 1;
             return 0;
         });
         memberForm.member_ids = sortedMembers.map((m: any) => m.id);
@@ -322,8 +322,8 @@ const getDeptCode = (titleStr?: string) => {
                                             <span v-if="getDeptCode(member.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(member.title) }})</span>
                                         </span>
                                         
-                                        <span v-if="memberForm.member_ids.indexOf(member.id) === 0" class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">CHAIRMAN</span>
-                                        <span v-else-if="memberForm.member_ids.indexOf(member.id) === 1" class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">VICE CHAIRMAN</span>
+                                        <span v-if="memberForm.member_ids.indexOf(member.id) === 0" class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">CHAIRPERSON</span>
+                                        <span v-else-if="memberForm.member_ids.indexOf(member.id) === 1" class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md tracking-widest shrink-0">VICE CHAIRPERSON</span>
                                         <span v-else-if="memberForm.member_ids.indexOf(member.id) > 1" class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-md tracking-widest shrink-0">MEMBER</span>
                                     </span>
                                     

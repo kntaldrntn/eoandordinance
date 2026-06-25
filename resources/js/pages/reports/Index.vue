@@ -12,6 +12,7 @@ const props = defineProps<{
         total: number;
     };
     statuses: Array<{ id: number; name: string }>;
+    ordinanceCodes: Array<{ id: number; name: string }>;
     filters: {
         type: string;
         status_id: string;
@@ -20,6 +21,7 @@ const props = defineProps<{
         search: string;
         has_irr: string; 
         structure_type?: string;
+        ordinance_code_id?: string;
     };
 }>();
 
@@ -32,6 +34,7 @@ const filterForm = ref({
     search: props.filters.search || '',
     has_irr: props.filters.has_irr || '',
     structure_type: props.filters.structure_type || '',
+    ordinance_code_id: props.filters.ordinance_code_id || ''
 });
 
 const isLoading = ref(false);
@@ -54,7 +57,7 @@ watch(() => filterForm.value.search, () => {
 });
 
 const clearFilters = () => {
-    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '', has_irr: '', structure_type: '' }; 
+    filterForm.value = { type: 'all', status_id: '', date_from: '', date_to: '', search: '', has_irr: '', structure_type: '', ordinance_code_id: '' };
     applyFilters();
 };
 
@@ -129,6 +132,23 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                     </div>
 
                     <div>
+                        <label class="mb-1 block text-xs font-bold uppercase transition-opacity" :class="filterForm.type === 'eo' ? 'text-gray-400 opacity-60' : 'text-gray-500'">
+                            Ordinance Codes
+                        </label>
+                        <select 
+                            v-model="filterForm.ordinance_code_id" 
+                            @change="() => { if (filterForm.ordinance_code_id !== '') filterForm.type = 'ordinance'; applyFilters(); }"
+                            :disabled="filterForm.type === 'eo'"
+                            class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <option value="">All Ordinance Codes</option>
+                            <option v-for="ordinanceCode in ordinanceCodes" :key="ordinanceCode.id" :value="ordinanceCode.id">
+                                {{ ordinanceCode.name }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <div>
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">IRR Attachment</label>
                         <select v-model="filterForm.has_irr" @change="applyFilters" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Any (Show All)</option>
@@ -147,7 +167,7 @@ const breadcrumbs = [{ title: 'Reports', href: '/reports' }];
                         <input v-model="filterForm.date_to" @change="applyFilters" type="date" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
 
-                    <div class="lg:col-span-2">
+                    <div>
                         <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Keyword Search</label>
                         <div class="relative">
                             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />

@@ -55,9 +55,9 @@ class CommitteeRegistryController extends Controller
         $syncData = [];
         foreach (array_values($memberIds) as $index => $memberId) {
             if ($index === 0) {
-                $role = 'Chairman';
+                $role = 'Chairperson'; // 🚀 FIXED to match Vue
             } elseif ($index === 1) {
-                $role = 'Vice Chairman';
+                $role = 'Vice Chairperson'; // 🚀 FIXED to match Vue
             } else {
                 $role = 'Member';
             }

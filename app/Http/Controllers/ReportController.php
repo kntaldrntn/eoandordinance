@@ -16,6 +16,7 @@ class ReportController extends Controller
         return Inertia::render('reports/Index', [
             'records' => ['data' => $this->getReportData($request), 'total' => count($this->getReportData($request))],
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
+            'ordinanceCodes' => DB::table('ordinance_codes')->orderBy('name')->get(),
             'filters' => $request->only(['type', 'status_id', 'date_from', 'date_to', 'search', 'has_irr', 'structure_type']), // 🚀 Added structure_type
         ]);
     }
@@ -42,7 +43,12 @@ class ReportController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
         $hasIrr = $request->input('has_irr'); 
-        $structureType = $request->input('structure_type'); // 🚀 Capture new filter
+        $structureType = $request->input('structure_type');
+        $ordinanceCodeId = $request->input('ordinance_code_id');
+
+        if (!empty($ordinanceCodeId)) {
+            $type = 'ordinance'; 
+        }
 
         $results = collect();
 
@@ -53,7 +59,6 @@ class ReportController extends Controller
             if ($statusId) $eoQuery->where('status_id', $statusId);
             if ($dateFrom) $eoQuery->whereDate('date_issued', '>=', $dateFrom);
             if ($dateTo) $eoQuery->whereDate('date_issued', '<=', $dateTo);
-            
             if ($hasIrr === 'yes') {
                 $eoQuery->has('implementingRules');
             } elseif ($hasIrr === 'no') {
@@ -113,6 +118,10 @@ class ReportController extends Controller
             if ($statusId) $ordQuery->where('status_id', $statusId);
             if ($dateFrom) $ordQuery->whereDate('date_enacted', '>=', $dateFrom);
             if ($dateTo) $ordQuery->whereDate('date_enacted', '<=', $dateTo);
+
+            if ($ordinanceCodeId) {
+                $ordQuery->where('ordinance_code_id', $ordinanceCodeId);
+            }
             
             if ($hasIrr === 'yes') {
                 $ordQuery->has('implementingRules');

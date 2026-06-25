@@ -106,12 +106,21 @@ const deptIrrSearchQuery = ref('');
 
 const filteredParents = computed(() => {
     let list = props.existing_ordinances || [];
+    
+    // Only suggest active ordinances
     list = list.filter(item => item.is_active);
 
+    // 🚀 NEW SMART FILTER: If you selected a Subject Code, ONLY show parents with that same code!
+    if (form.ordinance_code_id) {
+        list = list.filter(item => item.ordinance_code_id == form.ordinance_code_id);
+    }
+
+    // Exclude the current ordinance if editing
     if (isEdit.value && editingId.value) {
         list = list.filter(item => item.id !== editingId.value);
     }
 
+    // Filter by effectivity date (cannot amend a future ordinance)
     if (form.effectivity_date) {
         const newDocDate = new Date(form.effectivity_date).getTime();
         list = list.filter(item => {
@@ -120,6 +129,7 @@ const filteredParents = computed(() => {
         });
     }
 
+    // Filter by text search
     if (parentSearchQuery.value && !parentSearchQuery.value.startsWith('AMENDING:')) {
         const q = parentSearchQuery.value.toLowerCase();
         list = list.filter(item => {
@@ -128,6 +138,7 @@ const filteredParents = computed(() => {
             return trackingNo.includes(q) || title.includes(q);
         });
     }
+    
     return list.slice(0, 15);
 });
 
@@ -171,6 +182,7 @@ const defaultAuthorDetails = () => ({
     is_primary_author: true,
     sponsorship_committee: { id: null, name: '' },
     committee_chairmanship: createEmptyMember(),
+    committee_vice_chairmanship: createEmptyMember(), // 🚀 NEW
     co_authors: Array.from({ length: 4 }, createEmptyMember),
     committee_members: Array.from({ length: 4 }, createEmptyMember)
 });
@@ -282,6 +294,7 @@ const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: num
 
     addVal(a.introduced_by, 'introduced_by');
     addVal(a.committee_chairmanship, 'committee');
+    addVal(a.committee_vice_chairmanship, 'committee_vice');
     a.co_authors.forEach((v, i) => addVal(v, 'co_authors', i));
     a.committee_members.forEach((v, i) => addVal(v, 'committee_members', i));
 
@@ -332,6 +345,7 @@ const selectPerson = (field: string, person: any, index?: number) => {
     // Object fields for Ordinance Main Form
     if (field === 'introduced_by') form.author_details.introduced_by = personObj;
     else if (field === 'committee') form.author_details.committee_chairmanship = personObj;
+    else if (field === 'committee_vice') form.author_details.committee_vice_chairmanship = personObj;
     else if (field === 'co_authors' && index !== undefined) form.author_details.co_authors[index] = personObj;
     else if (field === 'committee_members' && index !== undefined) form.author_details.committee_members[index] = personObj;
     else if (field === 'external_members' && index !== undefined) form.external_institutions.members[index] = personObj;
@@ -370,8 +384,12 @@ const clearSponsorship = () => {
     sponsorshipSearchQuery.value = '';
     selectedRegistryId.value = '';
     form.selected_registry_id = '';
-    // Clear committee members UI when sponsorship is cleared
+    
+    // 🚀 FIXED: Auto-clear the imported people
+    form.author_details.committee_chairmanship = createEmptyMember();
+    form.author_details.committee_vice_chairmanship = createEmptyMember();
     form.author_details.committee_members = Array.from({ length: 4 }, createEmptyMember);
+    
     activeSuggestion.value = null;
 };
 
@@ -381,16 +399,27 @@ const loadFromRegistry = () => {
     const selectedRegistry = props.committeeRegistries.find(c => c.id == Number(selectedRegistryId.value));
     
     if (selectedRegistry && selectedRegistry.members) {
-        // Set the sponsorship committee name/id and map the database members into the form structure
         form.author_details.sponsorship_committee = form.author_details.sponsorship_committee || { id: null, name: '' };
         form.author_details.sponsorship_committee.id = selectedRegistry.id;
         form.author_details.sponsorship_committee.name = selectedRegistry.name;
 
-        form.author_details.committee_members = selectedRegistry.members.map((m: any) => ({
-            id: m.id,
-            pmis_id: m.pmis_id,
-            name: m.name
-        }));
+        // Reset the arrays before importing
+        form.author_details.committee_chairmanship = createEmptyMember();
+        form.author_details.committee_vice_chairmanship = createEmptyMember(); // 🚀 NEW
+        form.author_details.committee_members = [];
+
+        selectedRegistry.members.forEach((m: any) => {
+            const role = m.pivot?.role;
+            const memberObj = { id: m.id, pmis_id: m.pmis_id, name: m.name };
+
+            if (role === 'Chairperson' || role === 'Chairman' || role === 'Committee Chairman') {
+                form.author_details.committee_chairmanship = memberObj;
+            } else if (role === 'Vice Chairperson' || role === 'Vice Chairman' || role === 'Committee Vice Chairman') {
+                form.author_details.committee_vice_chairmanship = memberObj;
+            } else {
+                form.author_details.committee_members.push(memberObj);
+            }
+        });
 
         // Ensure UI slots are filled up to fixed 4 entries
         while (form.author_details.committee_members.length < 4) {
@@ -552,7 +581,8 @@ function openEditDialog(ord: any) {
                     a.introduced_by = memberObj;
                     a.is_primary_author = role === 'Primary Author';
                 }
-                else if (role === 'Committee Chairman') a.committee_chairmanship = memberObj;
+                else if (role === 'Chairperson' || role === 'Committee Chairman') a.committee_chairmanship = memberObj;
+                else if (role === 'Vice Chairperson' || role === 'Committee Vice Chairman') a.committee_vice_chairmanship = memberObj;
                 else if (role === 'Co-Author') a.co_authors[coAuthorIdx++] = memberObj;
                 else if (role === 'Committee Member') a.committee_members[commMemberIdx++] = memberObj;
                 else if (role === 'External Member') e.members[extMemberIdx++] = memberObj;
@@ -562,21 +592,32 @@ function openEditDialog(ord: any) {
 
             // If this committee is linked to a registry, preselect it so the sponsorship input shows the registry name
                     if (committee.registry_id) {
-                        selectedRegistryId.value = committee.registry_id;
-                        form.selected_registry_id = committee.registry_id;
-                        const reg = props.committeeRegistries.find((r: any) => r.id == committee.registry_id);
-                        if (reg) {
-                            a.sponsorship_committee.id = reg.id;
-                            a.sponsorship_committee.name = reg.name;
-                            sponsorshipSearchQuery.value = reg.name;
+    selectedRegistryId.value = committee.registry_id;
+    form.selected_registry_id = committee.registry_id;
+    const reg = props.committeeRegistries.find((r: any) => r.id == committee.registry_id);
+    if (reg) {
+        a.sponsorship_committee.id = reg.id;
+        a.sponsorship_committee.name = reg.name;
+        sponsorshipSearchQuery.value = reg.name;
 
-                            // Prefer registry members for the committee members list when a registry is linked
-                            if (reg.members && reg.members.length > 0) {
-                                a.committee_members = reg.members.map((m: any) => ({ id: m.id, pmis_id: m.pmis_id, name: m.name }));
-                                while (a.committee_members.length < 4) a.committee_members.push(createEmptyMember());
-                            }
-                        }
-                    }
+        // ✅ chair/vice chair already set above from committee.members pivot — don't touch them
+        // Only fill committee_members from registry, excluding whoever is already chair/vice chair
+        const chairName = a.committee_chairmanship?.name?.toLowerCase().trim() ?? '';
+        const viceName = a.committee_vice_chairmanship?.name?.toLowerCase().trim() ?? '';
+
+        if (reg.members && reg.members.length > 0) {
+            const regMembers = reg.members
+                .filter((m: any) => {
+                    const n = m.name?.toLowerCase().trim() ?? '';
+                    return n !== chairName && n !== viceName;
+                })
+                .map((m: any) => ({ id: m.id, pmis_id: m.pmis_id, name: m.name }));
+
+            a.committee_members = regMembers;
+            while (a.committee_members.length < 4) a.committee_members.push(createEmptyMember());
+        }
+    }
+}
         }
     }
 
@@ -616,6 +657,7 @@ function submitForm() {
             introduced_by: data.author_details.introduced_by,
             primary_author: data.author_details.is_primary_author ? data.author_details.introduced_by : null,
             committee_chairmanship: data.author_details.committee_chairmanship,
+            committee_vice_chairmanship: data.author_details.committee_vice_chairmanship, // 🚀 NEW
             sponsorship_committee: data.author_details.sponsorship_committee || { id: null, name: '' },
             selected_registry_id: data.selected_registry_id || null,
             co_authors: filterEmpty(data.author_details.co_authors),
@@ -921,7 +963,7 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                         </select>
 
                         <select v-model="filterCode" class="border-0 bg-transparent text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer py-1.5 pl-2 pr-6 border-r border-gray-200 w-full sm:w-auto outline-none">
-                            <option value="all">All Subject Codes</option>
+                            <option value="all">Subject Codes</option>
                             <option v-for="code in ordinance_codes" :key="code.id" :value="code.id">{{ code.name }}</option>
                         </select>
 
@@ -1304,11 +1346,11 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </div>
 
                                 <div v-show="activeAuthorTab === 'committees'" class="animate-in fade-in duration-300">
-                                    <!-- Registry select moved next to Sponsorship Committee input below -->
-
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3">
-                                        <div>
-                                            <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Sponsorship Committee</label>
+                                        
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Sponsorship Committee</label>
                                                 <div class="relative w-full flex items-center gap-2">
                                                     <div class="relative flex-1">
                                                         <div class="relative">
@@ -1332,6 +1374,51 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            <div>
+                                                <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Committee Chairperson</label>
+                                                <div class="relative">
+                                                    <input
+                                                        v-model="form.author_details.committee_chairmanship.name"
+                                                        @focus.stop="activeSuggestion = 'committee_chair'"
+                                                        @click.stop="activeSuggestion = 'committee_chair'"
+                                                        @input="activeSuggestion = 'committee_chair'"
+                                                        type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
+
+                                                    <div v-if="activeSuggestion === 'committee_chair' && getSuggestions(form.author_details.committee_chairmanship.name, null, 'committee').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                        <div v-for="(person, idx) in getSuggestions(form.author_details.committee_chairmanship.name, null, 'committee')" :key="idx" @mousedown.prevent="selectPerson('committee', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                            <div class="text-sm font-bold text-gray-800">
+                                                                {{ person.name }}
+                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                            </div>
+                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label class="mb-1 block text-xs font-bold text-blue-800 uppercase">Committee Vice Chairperson</label>
+                                                <div class="relative">
+                                                    <input
+                                                        v-model="form.author_details.committee_vice_chairmanship.name"
+                                                        @focus.stop="activeSuggestion = 'committee_vice_chair'"
+                                                        @click.stop="activeSuggestion = 'committee_vice_chair'"
+                                                        @input="activeSuggestion = 'committee_vice_chair'"
+                                                        type="text" class="w-full rounded-lg border border-blue-200 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white" placeholder="Search or type name..." />
+
+                                                    <div v-if="activeSuggestion === 'committee_vice_chair' && getSuggestions(form.author_details.committee_vice_chairmanship.name, null, 'committee_vice').length > 0" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                        <div v-for="(person, idx) in getSuggestions(form.author_details.committee_vice_chairmanship.name, null, 'committee_vice')" :key="idx" @mousedown.prevent="selectPerson('committee_vice', person)" class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 text-sm font-bold text-gray-800">
+                                                            <div class="text-sm font-bold text-gray-800">
+                                                                {{ person.name }}
+                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                            </div>
+                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         <div>
                                             <label class="mb-2 block text-xs font-bold text-blue-800 uppercase">Committee Members</label>

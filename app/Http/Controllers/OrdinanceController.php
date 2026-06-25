@@ -112,9 +112,11 @@ class OrdinanceController extends Controller
             'ordinances' => $query->orderBy('date_enacted', 'desc')->paginate(10)->withQueryString(),
             'departments' => Department::orderBy('name')->get(),
             'statuses' => DB::table('statuses')->orderBy('name')->get(),
-            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title', 'is_active', 'effectivity_date')->orderBy('ordinance_number', 'desc')->get(),
+            'existing_ordinances' => Ordinance::select('id', 'ordinance_number', 'title', 'is_active', 'effectivity_date', 'ordinance_code_id')->orderBy('ordinance_number', 'desc')->get(),
             'peopleRegistry' => $peopleRegistry,
-            'committeeRegistries' => CommitteeRegistry::with('members')->get(),
+            'committeeRegistries' => CommitteeRegistry::with(['members' => function($q) {
+    $q->withPivot('role');
+}])->get(),
             'ordinance_codes' => OrdinanceCode::orderBy('name')->get(),
             'filters' => $request->only(['search', 'year', 'is_active', 'ordinance_code_id', 'has_irr']),
             'available_years' => $years,
@@ -242,7 +244,7 @@ class OrdinanceController extends Controller
             'subject_matter' => 'nullable|string',
             'date_approved' => 'required|date',
             'effectivity_date' => 'required|date|after_or_equal:date_approved',
-            'date_enacted' => 'required|date|after_or_equal:date_enacted',
+            'date_enacted' => 'required|date|after_or_equal:effectivity_date',
             'presiding_officer' => 'required|string',
             'attested_by' => 'nullable|string',
             'approved_by' => 'nullable|string',
@@ -410,17 +412,19 @@ class OrdinanceController extends Controller
                 $role = !empty($a['is_primary_author']) ? 'Primary Author' : 'Introduced By';
                 $addMember($a['introduced_by'], $role);
             }
-
-            if (!empty($a['committee_chairmanship'])) {
-                $addMember($a['committee_chairmanship'], 'Committee Chairman');
-            }
-
             if (!empty($a['co_authors'])) {
                 foreach ($a['co_authors'] as $ca) $addMember($ca, 'Co-Author');
             }
 
             if (!empty($a['committee_members'])) {
                 foreach ($a['committee_members'] as $cm) $addMember($cm, 'Committee Member');
+            }
+            if (!empty($a['committee_chairmanship'])) {
+                $addMember($a['committee_chairmanship'], 'Chairperson'); // Use Chairperson
+            }
+
+            if (!empty($a['committee_vice_chairmanship'])) {
+                $addMember($a['committee_vice_chairmanship'], 'Vice Chairperson'); // Use Vice Chairperson
             }
         }
 
@@ -507,43 +511,54 @@ class OrdinanceController extends Controller
                 }
 
                 foreach ($registry->members as $m) {
-                    $targetMemberId = null;
+    $targetMemberId = null;
 
-                    if (!empty($m->pmis_id)) {
-                        $employee = \App\Models\CityEmployee::with('department')->where('pmis_id', $m->pmis_id)->first();
-                        if ($employee) {
-                            $cm = CommitteeMember::updateOrCreate(
-                                ['pmis_id' => $employee->pmis_id],
-                                ['name' => $employee->full_name, 'position' => $employee->position, 'agency' => $employee->department->name ?? 'City Government']
-                            );
-                            $targetMemberId = $cm->id;
-                        }
-                    }
+    if (!empty($m->pmis_id)) {
+        $employee = \App\Models\CityEmployee::with('department')->where('pmis_id', $m->pmis_id)->first();
+        if ($employee) {
+            $cm = CommitteeMember::updateOrCreate(
+                ['pmis_id' => $employee->pmis_id],
+                ['name' => $employee->full_name, 'position' => $employee->position, 'agency' => $employee->department->name ?? 'City Government']
+            );
+            $targetMemberId = $cm->id;
+        }
+    }
 
-                    if (!$targetMemberId) {
-                        $existingByNameId = $existingNames[strtolower(trim($m->name))] ?? null;
-                        if ($existingByNameId) {
-                            $targetMemberId = $existingByNameId;
-                        } elseif (!empty($m->id)) {
-                            $targetMemberId = $m->id;
-                        } else {
-                            $cleanName = trim($m->name);
-                            $cm = CommitteeMember::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($cleanName)])->first()
-                                ?? CommitteeMember::create(['name' => $cleanName, 'position' => 'External Partner']);
-                            $targetMemberId = $cm->id;
-                        }
-                    }
+    if (!$targetMemberId) {
+        $existingByNameId = $existingNames[strtolower(trim($m->name))] ?? null;
+        if ($existingByNameId) {
+            $targetMemberId = $existingByNameId;
+        } elseif (!empty($m->id)) {
+            $targetMemberId = $m->id;
+        } else {
+            $cleanName = trim($m->name);
+            $cm = CommitteeMember::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($cleanName)])->first()
+                ?? CommitteeMember::create(['name' => $cleanName, 'position' => 'External Partner']);
+            $targetMemberId = $cm->id;
+        }
+    }
 
-                    if (!empty($m->pmis_id) && isset($existingPmis[$m->pmis_id])) {
-                        unset($membersToSync[$existingPmis[$m->pmis_id]]);
-                    }
-                    if (isset($existingNames[strtolower(trim($m->name))])) {
-                        $eid = $existingNames[strtolower(trim($m->name))];
-                        if (isset($membersToSync[$eid])) unset($membersToSync[$eid]);
-                    }
+    // ✅ FIX: Read the role BEFORE unset() destroys it
+    $preservedRole = null;
+    if ($targetMemberId && isset($membersToSync[$targetMemberId])) {
+        $existingRole = $membersToSync[$targetMemberId]['role'] ?? '';
+        if (in_array($existingRole, ['Chairperson', 'Vice Chairperson'])) {
+            $preservedRole = $existingRole;
+        }
+    }
 
-                    if ($targetMemberId) $membersToSync[$targetMemberId] = ['role' => 'Committee Member'];
-                }
+    if (!empty($m->pmis_id) && isset($existingPmis[$m->pmis_id])) {
+        unset($membersToSync[$existingPmis[$m->pmis_id]]);
+    }
+    if (isset($existingNames[strtolower(trim($m->name))])) {
+        $eid = $existingNames[strtolower(trim($m->name))];
+        if (isset($membersToSync[$eid])) unset($membersToSync[$eid]);
+    }
+
+    if ($targetMemberId) {
+        $membersToSync[$targetMemberId] = ['role' => $preservedRole ?? 'Committee Member'];
+    }
+}
 
                 $committee->registry_id = $registry->id;
                 $committee->save();
@@ -585,8 +600,28 @@ class OrdinanceController extends Controller
                     }
                 }
 
-                if (!empty($desiredRegistryMemberIds)) {
-                    $registry->members()->sync(array_values(array_unique($desiredRegistryMemberIds)));
+                // Also include chair and vice chair in the registry member list
+                $chairId = null;
+                $viceId = null;
+
+                if (!empty($authorDetails['committee_chairmanship'])) {
+                    $chair = CommitteeMember::find($authorDetails['committee_chairmanship']['id'] ?? null)
+                        ?? CommitteeMember::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($authorDetails['committee_chairmanship']['name'] ?? ''))])->first();
+                    if ($chair) $chairId = $chair->id;
+                }
+
+                if (!empty($authorDetails['committee_vice_chairmanship'])) {
+                    $vice = CommitteeMember::find($authorDetails['committee_vice_chairmanship']['id'] ?? null)
+                        ?? CommitteeMember::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($authorDetails['committee_vice_chairmanship']['name'] ?? ''))])->first();
+                    if ($vice) $viceId = $vice->id;
+                }
+
+                $allRegistryMemberIds = array_values(array_unique(array_filter(
+                    array_merge($desiredRegistryMemberIds, array_filter([$chairId, $viceId]))
+                )));
+
+                if (!empty($allRegistryMemberIds)) {
+                    $registry->members()->sync($allRegistryMemberIds);
                 }
             }
         }

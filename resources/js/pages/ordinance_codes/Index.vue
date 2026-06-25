@@ -127,8 +127,8 @@ const breadcrumbs = [
                 <table class="w-full text-left text-sm text-gray-700">
                     <thead class="bg-gray-50 text-xs text-gray-600 uppercase border-b border-gray-200">
                         <tr>
-                            <th class="px-6 py-4 font-semibold">Code Group Name</th>
-                            <th class="px-6 py-4 font-semibold">Description</th>
+                            <th class="px-6 py-4 font-semibold">Subject</th>
+                            <!-- <th class="px-6 py-4 font-semibold">Description</th> -->
                             <th class="px-6 py-4 font-semibold text-center">Linked Laws</th>
                             <th class="px-6 py-4 font-semibold text-center">Actions</th>
                         </tr>
@@ -139,9 +139,9 @@ const breadcrumbs = [
                                 <BookOpen class="w-4 h-4 text-blue-500 shrink-0" />
                                 {{ code.name }}
                             </td>
-                            <td class="px-6 py-4 text-xs text-gray-500 max-w-sm truncate">
+                            <!-- <td class="px-6 py-4 text-xs text-gray-500 max-w-sm truncate">
                                 {{ code.description || 'No description provided.' }}
-                            </td>
+                            </td> -->
                             <td class="px-6 py-4 text-center">
                                 <span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 border border-blue-100">
                                     {{ code.ordinances_count ?? 0 }} Ordinances
