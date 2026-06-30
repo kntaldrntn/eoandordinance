@@ -18,7 +18,8 @@ const props = defineProps<{
     statuses: Array<{ id: number; name: string }>;
     classifications: Array<{ id: number; name: string }>;
     existing_eos: Array<{ id: number; eo_number: string; title: string }>;
-    peopleRegistry: Array<{ name: string; title: string; type: string }>;
+    // 🚀 CHANGED: position/agency now exposed directly (was a combined "title" string)
+    peopleRegistry: Array<{ id?: number; pmis_id?: string | null; name: string; position?: string | null; agency?: string | null; type: string }>;
     filters?: { search?: string; year?: string; is_active?: string };
     available_years: number[];
     flash?: { success?: string; error?: string };
@@ -70,6 +71,26 @@ const editingId = ref<number | null>(null);
 const activeModalTab = ref('details');
 const activeCouncilTab = ref('committee');
 const selectedRecord = ref<any>(null);
+
+// --- COLLAPSIBLE SECTIONS ---
+const openSections = ref<Record<string, boolean>>({
+    leadership: true,
+    council_members: true,
+    secretariat_lead: true,
+    secretariat_members: true,
+    twg_head: true,
+    twg_members: true,
+    program_lead: true,
+    program_members: true,
+});
+const toggleSection = (key: string) => { openSections.value[key] = !openSections.value[key]; };
+
+// --- INTERNAL / EXTERNAL SWITCHERS (for the two-list member sections) ---
+const memberView = ref<{ council: 'internal' | 'external'; twg: 'internal' | 'external'; program: 'internal' | 'external' }>({
+    council: 'internal',
+    twg: 'internal',
+    program: 'internal',
+});
 
 const selectableStatuses = computed(() => {
     const manualStatuses = ['New', 'Amendment', 'Suspended'];
@@ -134,7 +155,8 @@ const clearParent = () => {
 };
 
 // --- DYNAMIC ARRAY HELPERS ---
-const createEmptyMember = () => ({ id: null, pmis_id: null, name: '' });
+// 🚀 CHANGED: every member now carries position + agency alongside name
+const createEmptyMember = () => ({ id: null, pmis_id: null, name: '', position: '', agency: '' });
 
 const getListByField = (field: string) => {
     const c = form.committee_details.council;
@@ -169,17 +191,6 @@ const removeMember = (field: string, index: number) => {
 // --- SUGGESTIVE INPUT LOGIC ---
 const activeSuggestion = ref<string | null>(null);
 
-const getDeptCode = (titleStr?: string) => {
-    if (!titleStr) return '';
-    const match = titleStr.match(/\(([^)]+)\)/);
-    if (match) {
-        const officeName = match[1].trim();
-        const dept = props.departments.find(d => d.name === officeName);
-        return dept && dept.code ? dept.code : officeName;
-    }
-    return '';
-};
-
 const normalize = (s: string) => s ? String(s).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 
 const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: number = -1) => {
@@ -191,7 +202,6 @@ const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: num
         if (field === ignoreField && idx === ignoreIndex) return;
         if (!val) return;
 
-        // 🚀 Fix: Ensure we are safely extracting the name
         const name = typeof val === 'object' ? val.name : val;
 
         if (typeof name === 'string' && name.trim() !== '') {
@@ -200,7 +210,7 @@ const getCurrentlySelectedPeople = (ignoreField: string | null, ignoreIndex: num
     };
 
     addVal(c.chairman, 'chairman');
-    addVal(c.co_chairman, 'co_chairman'); // Updated to single object
+    addVal(c.co_chairman, 'co_chairman');
     addVal(c.vice_chairman, 'vice_chairman');
     addVal(c.lead_secretariat, 'lead_secretariat');
     addVal(c.twg_head, 'twg_head');
@@ -253,18 +263,22 @@ const getSuggestions = (query: any, typeFilter: string | null = null, fieldName:
     }).slice(0, 10);
 };
 
+// 🚀 CHANGED: auto-fill position/agency from the registry entry, but the fields
+// stay plain v-model inputs afterward so the user can freely override them.
 const selectPerson = (field: string, person: any, index?: number) => {
     const personObj = {
         id: person.id,
         pmis_id: person.pmis_id,
-        name: person.name
+        name: person.name,
+        position: person.position || '',
+        agency: person.agency || ''
     };
 
     if (field === 'chairman') form.committee_details.council.chairman = personObj;
     else if (field === 'vice_chairman') form.committee_details.council.vice_chairman = personObj;
     else if (field === 'lead_secretariat') form.committee_details.council.lead_secretariat = personObj;
     else if (field === 'twg_head') form.committee_details.council.twg_head = personObj;
-    else if (field === 'co_chairman') form.committee_details.council.co_chairman = personObj; // Single object
+    else if (field === 'co_chairman') form.committee_details.council.co_chairman = personObj;
     else if (index !== undefined) {
         if (field === 'council_internal') form.committee_details.council.internal_members[index] = personObj;
         else if (field === 'council_external') form.committee_details.council.external_members[index] = personObj;
@@ -302,7 +316,7 @@ const defaultCommitteeDetails = () => ({
         vice_chairman: createEmptyMember(),
         lead_secretariat: createEmptyMember(),
         twg_head: createEmptyMember(),
-        co_chairman: createEmptyMember(), // 🚀 Now a single object
+        co_chairman: createEmptyMember(),
         internal_members: Array.from({ length: 5 }, createEmptyMember),
         external_members: Array.from({ length: 5 }, createEmptyMember),
         secretariat_members: Array.from({ length: 5 }, createEmptyMember),
@@ -384,49 +398,52 @@ function openEditDialog(eo: any) {
     selectedRecord.value = eo;
     activeModalTab.value = 'details';
     activeCouncilTab.value = 'committee';
- 
+
     form.clearErrors();
- 
+
     form.eo_number = eo.eo_number;
     form.title = eo.title;
     form.classification_id = eo.classification_id || '';
     form.status_id = eo.status_id || '';
- 
+
     form.date_issued = formatForInput(eo.date_issued);
     form.effectivity_date = formatForInput(eo.effectivity_date);
- 
+
     form.legal_basis = eo.legal_basis || '';
     form.declaration = eo.declaration || '';
     form.is_active = Boolean(eo.is_active);
     form.amends_eo_id = eo.amends_eo_id || '';
- 
+
     if (eo.amends_eo_id) {
         const parent = props.existing_eos.find(e => e.id === eo.amends_eo_id);
         parentSearchQuery.value = parent ? `AMENDING: ${parent.eo_number}` : '';
     } else {
         parentSearchQuery.value = '';
     }
- 
+
     const c = defaultCommitteeDetails();
- 
+
     if (eo.committees && eo.committees.length > 0) {
         const committee = eo.committees[0];
         c.type = committee.type;
- 
+
         if (committee.members && committee.members.length > 0) {
+            // 🚀 CHANGED: carry position/agency from the loaded CommitteeMember record
             const formatMember = (m: any) => ({
                 id: m.id,
                 pmis_id: m.pmis_id,
-                name: m.name
+                name: m.name,
+                position: m.position || '',
+                agency: m.agency || ''
             });
- 
+
             let intIdx = 0, extIdx = 0, secIdx = 0, twgIntIdx = 0, twgExtIdx = 0;
             let progIntIdx = 0, progExtIdx = 0;
- 
+
             committee.members.forEach((m: any) => {
                 const role = m.pivot.role;
                 const memberObj = formatMember(m);
- 
+
                 if (c.type === 'council') {
                     if (role === 'Chairman') c.council.chairman = memberObj;
                     else if (role === 'Vice Chairman') c.council.vice_chairman = memberObj;
@@ -444,17 +461,16 @@ function openEditDialog(eo: any) {
                 }
             });
         }
- 
-        // ── FIX: restore co_lead_office_id so editing doesn't wipe it ──
+
         if (c.type === 'program') {
             c.program.co_lead_office_id = committee.co_lead_office_id || '';
         }
     }
- 
+
     const lead = eo.departments?.find((d: any) => d.pivot.role === 'lead');
     form.lead_office_id = lead ? lead.id : '';
     leadOfficeSearch.value = lead ? lead.name : '';
- 
+
     form.file = null;
     form.committee_details = c;
     showDialog.value = true;
@@ -486,20 +502,18 @@ const getChangedFields = (audit: any) => {
 function handleFileChange(e: Event) {
     const target = e.target as HTMLInputElement;
     if (target.files && target.files[0]) {
-        // Just set the file property. Do NOT reset the whole form.
         form.file = target.files[0];
     }
 }
 
 function submitForm() {
     const url = isEdit.value && editingId.value ? route('eo.update', editingId.value) : route('eo.store');
- 
+
     form.transform((data) => {
         const filterEmpty = (arr: any[]) => arr.filter(m => m && m.name && m.name.trim() !== '');
- 
-        // ── FIX: deep-clone so we don't mutate live form state ──
+
         const committeeDetails = JSON.parse(JSON.stringify(data.committee_details));
- 
+
         if (committeeDetails.type === 'council') {
             committeeDetails.council.internal_members     = filterEmpty(committeeDetails.council.internal_members);
             committeeDetails.council.external_members     = filterEmpty(committeeDetails.council.external_members);
@@ -509,16 +523,11 @@ function submitForm() {
         } else if (committeeDetails.type === 'program') {
             committeeDetails.program.internal_members = filterEmpty(committeeDetails.program.internal_members);
             committeeDetails.program.external_members = filterEmpty(committeeDetails.program.external_members);
-            // co_lead_office_id is preserved from the deep clone above
         }
- 
+
         return {
             ...data,
-            // ── KEY FIX: JSON.stringify so PHP receives one clean string ──
-            // forceFormData bracket-notation loses values at 3+ nesting levels.
-            // Sending as a JSON string lets PHP json_decode it reliably.
             committee_details: JSON.stringify(committeeDetails),
-            // Spoof PUT for Laravel over multipart POST
             _method: isEdit.value ? 'PUT' : undefined,
         };
     }).post(url, {
@@ -676,7 +685,7 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
 
             <Transition name="fade">
                 <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-                    <div class="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar" @click="activeSuggestion = null; showParentDropdown = false">
+                    <div class="w-full max-w-5xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar" @click="activeSuggestion = null; showParentDropdown = false">
 
                         <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
                             <div>
@@ -890,184 +899,226 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                         <button type="button" @click="activeCouncilTab = 'twg'" class="pb-3 px-1 text-xs font-bold uppercase tracking-wider border-b-2 transition-all" :class="activeCouncilTab === 'twg' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'">Technical Working Group</button>
                                     </div>
 
-                                    <div v-show="activeCouncilTab === 'committee'" class="space-y-6 animate-in fade-in duration-300">
-                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div class="relative">
-                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Chairman</label>
-                                                <input
-                                                    v-model="form.committee_details.council.chairman.name"
-                                                    @focus.stop="activeSuggestion = 'chairman'"
-                                                    @click.stop="activeSuggestion = 'chairman'"
-                                                    @input="activeSuggestion = 'chairman'"
-                                                    type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                    <!-- ── COMMITTEE TAB ──────────────────────────────────────────── -->
+                                    <div v-show="activeCouncilTab === 'committee'" class="space-y-4 animate-in fade-in duration-300">
 
-                                                <div v-if="activeSuggestion === 'chairman' && getSuggestions(form.committee_details.council.chairman.name, null, 'chairman').length > 0"
-                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.chairman.name, null, 'chairman')" :key="idx"
-                                                         @mousedown.prevent="selectPerson('chairman', person)"
-                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">
-                                                            {{ person.name }}
-                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                        <!-- Leadership (collapsible) -->
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('leadership')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Committee Leadership</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.leadership ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.leadership" class="p-4 space-y-4">
+
+                                                <!-- Chairman -->
+                                                <div class="space-y-1">
+                                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Chairman</label>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 w-full">
+                                                        <div class="relative">
+                                                            <input
+                                                                v-model="form.committee_details.council.chairman.name"
+                                                                @focus.stop="activeSuggestion = 'chairman'"
+                                                                @click.stop="activeSuggestion = 'chairman'"
+                                                                @input="activeSuggestion = 'chairman'"
+                                                                type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                            <div v-if="activeSuggestion === 'chairman' && getSuggestions(form.committee_details.council.chairman.name, null, 'chairman').length > 0"
+                                                                 class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(form.committee_details.council.chairman.name, null, 'chairman')" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('chairman', person)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        <input v-model="form.committee_details.council.chairman.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="form.committee_details.council.chairman.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            <div class="relative">
-                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Chairman</label>
-                                                <input
-                                                    v-model="form.committee_details.council.co_chairman.name"
-                                                    @focus.stop="activeSuggestion = 'co_chairman'"
-                                                    @click.stop="activeSuggestion = 'co_chairman'"
-                                                    @input="activeSuggestion = 'co_chairman'"
-                                                    type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
-
-                                                <div v-if="activeSuggestion === 'co_chairman' && getSuggestions(form.committee_details.council.co_chairman.name, null, 'co_chairman').length > 0"
-                                                     class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.co_chairman.name, null, 'co_chairman')" :key="idx"
-                                                         @mousedown.prevent="selectPerson('co_chairman', person)"
-                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">
-                                                            {{ person.name }}
-                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                <!-- Co-Chairman -->
+                                                <div class="space-y-1">
+                                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Chairman</label>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 w-full">
+                                                        <div class="relative">
+                                                            <input
+                                                                v-model="form.committee_details.council.co_chairman.name"
+                                                                @focus.stop="activeSuggestion = 'co_chairman'"
+                                                                @click.stop="activeSuggestion = 'co_chairman'"
+                                                                @input="activeSuggestion = 'co_chairman'"
+                                                                type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                            <div v-if="activeSuggestion === 'co_chairman' && getSuggestions(form.committee_details.council.co_chairman.name, null, 'co_chairman').length > 0"
+                                                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(form.committee_details.council.co_chairman.name, null, 'co_chairman')" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('co_chairman', person)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        <input v-model="form.committee_details.council.co_chairman.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="form.committee_details.council.co_chairman.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            <div class="relative">
-                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Vice Chairman</label>
-                                                <input
-                                                    v-model="form.committee_details.council.vice_chairman.name"
-                                                    @focus.stop="activeSuggestion = 'vice_chairman'"
-                                                    @click.stop="activeSuggestion = 'vice_chairman'"
-                                                    @input="activeSuggestion = 'vice_chairman'"
-                                                    type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
-
-                                                <div v-if="activeSuggestion === 'vice_chairman' && getSuggestions(form.committee_details.council.vice_chairman.name, null, 'vice_chairman').length > 0"
-                                                     class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.vice_chairman.name, null, 'vice_chairman')" :key="idx"
-                                                         @mousedown.prevent="selectPerson('vice_chairman', person)"
-                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">
-                                                            {{ person.name }}
-                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                <!-- Vice Chairman -->
+                                                <div class="space-y-1">
+                                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Vice Chairman</label>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 w-full">
+                                                        <div class="relative">
+                                                            <input
+                                                                v-model="form.committee_details.council.vice_chairman.name"
+                                                                @focus.stop="activeSuggestion = 'vice_chairman'"
+                                                                @click.stop="activeSuggestion = 'vice_chairman'"
+                                                                @input="activeSuggestion = 'vice_chairman'"
+                                                                type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                            <div v-if="activeSuggestion === 'vice_chairman' && getSuggestions(form.committee_details.council.vice_chairman.name, null, 'vice_chairman').length > 0"
+                                                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(form.committee_details.council.vice_chairman.name, null, 'vice_chairman')" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('vice_chairman', person)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                        <input v-model="form.committee_details.council.vice_chairman.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="form.committee_details.council.vice_chairman.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div class="space-y-2">
-                                                <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">Internal Members</label>
-                                                    <div v-for="(member, index) in form.committee_details.council.internal_members" :key="'ci_'+index" class="relative flex items-center gap-2">
-                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                        <div class="relative flex-1">
-                                                            <input
-                                                                v-model="member.name"
-                                                                @focus.stop="activeSuggestion = 'council_internal_' + index"
-                                                                @click.stop="activeSuggestion = 'council_internal_' + index"
-                                                                type="text"
-                                                                class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                                placeholder="Search or type name..."
-                                                            />
+                                        <!-- Members (collapsible, full-width, Internal/External switcher) -->
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('council_members')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Committee Members</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.council_members ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.council_members" class="p-4 space-y-3">
 
-                                                            <div v-if="activeSuggestion === 'council_internal_' + index && getSuggestions(member.name, 'Internal', 'council_internal', index).length > 0"
-                                                                 class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                                <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'council_internal', index)" :key="idx"
-                                                                     @mousedown.prevent="selectPerson('council_internal', person, index)"
-                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                    <div class="text-sm font-bold text-gray-800">
-                                                                        {{ person.name }}
-                                                                        <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                                <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 self-start">
+                                                    <button type="button" @click="memberView.council = 'internal'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.council === 'internal' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">Internal Members</button>
+                                                    <button type="button" @click="memberView.council = 'external'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.council === 'external' ? 'bg-green-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">External Members</button>
+                                                </div>
+
+                                                <div v-show="memberView.council === 'internal'" class="space-y-2">
+                                                    <div v-for="(member, index) in form.committee_details.council.internal_members" :key="'ci_'+index" class="flex items-start gap-2">
+                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                            <div class="relative">
+                                                                <input
+                                                                    v-model="member.name"
+                                                                    @focus.stop="activeSuggestion = 'council_internal_' + index"
+                                                                    @click.stop="activeSuggestion = 'council_internal_' + index"
+                                                                    type="text"
+                                                                    class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Search or type name..."
+                                                                />
+                                                                <div v-if="activeSuggestion === 'council_internal_' + index && getSuggestions(member.name, 'Internal', 'council_internal', index).length > 0"
+                                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                    <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'council_internal', index)" :key="idx"
+                                                                         @mousedown.prevent="selectPerson('council_internal', person, index)"
+                                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-blue-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
                                                                     </div>
-                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                                 </div>
                                                             </div>
+                                                            <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                            <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                         </div>
-                                                        <button @click="removeMember('council_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.internal_members.length > 1">
+                                                        <button @click="removeMember('council_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.council.internal_members.length > 1">
                                                             <XCircle class="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                <button type="button" @click="addMember('council_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                    <Plus class="w-3.5 h-3.5" /> Add Row
-                                                </button>
-                                            </div>
-
-                                            <div class="space-y-2">
-                                                <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">External Members</label>
-                                                <div v-for="(member, index) in form.committee_details.council.external_members" :key="'ce_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                    <div class="relative flex-1">
-                                                        <input
-                                                            type="text"
-                                                            v-model="member.name"
-                                                            @focus.stop="activeSuggestion = 'council_external_' + index"
-                                                            @click.stop="activeSuggestion = 'council_external_' + index"
-                                                            class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Search or type name..."
-                                                        />
-
-                                                        <div v-if="activeSuggestion === 'council_external_' + index && getSuggestions(member.name, 'External', 'council_external', index).length > 0"
-                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'council_external', index)" :key="idx"
-                                                                 @mousedown.prevent="selectPerson('council_external', person, index)"
-                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">
-                                                                    {{ person.name }}
-                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
-                                                                </div>
-                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button @click="removeMember('council_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.external_members.length > 1">
-                                                        <XCircle class="w-4 h-4" />
+                                                    <button type="button" @click="addMember('council_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                        <Plus class="w-3.5 h-3.5" /> Add Row
                                                     </button>
                                                 </div>
-                                                <button type="button" @click="addMember('council_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                    <Plus class="w-3.5 h-3.5" /> Add Row
-                                                </button>
+
+                                                <div v-show="memberView.council === 'external'" class="space-y-2">
+                                                    <div v-for="(member, index) in form.committee_details.council.external_members" :key="'ce_'+index" class="flex items-start gap-2">
+                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                            <div class="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    v-model="member.name"
+                                                                    @focus.stop="activeSuggestion = 'council_external_' + index"
+                                                                    @click.stop="activeSuggestion = 'council_external_' + index"
+                                                                    class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Search or type name..."
+                                                                />
+                                                                <div v-if="activeSuggestion === 'council_external_' + index && getSuggestions(member.name, 'External', 'council_external', index).length > 0"
+                                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                    <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'council_external', index)" :key="idx"
+                                                                         @mousedown.prevent="selectPerson('council_external', person, index)"
+                                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-green-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                            <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
+                                                        </div>
+                                                        <button @click="removeMember('council_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.council.external_members.length > 1">
+                                                            <XCircle class="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <button type="button" @click="addMember('council_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                        <Plus class="w-3.5 h-3.5" /> Add Row
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div v-show="activeCouncilTab === 'secretariat'" class="space-y-6 animate-in fade-in duration-300">
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div class="space-y-6">
-                                                <div class="relative">
-                                                    <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Lead Secretariat</label>
-                                                    <input
-                                                        v-model="form.committee_details.council.lead_secretariat.name"
-                                                        @focus.stop="activeSuggestion = 'lead_secretariat'"
-                                                        @click.stop="activeSuggestion = 'lead_secretariat'"
-                                                        @input="activeSuggestion = 'lead_secretariat'"
-                                                        type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
 
-                                                    <div v-if="activeSuggestion === 'lead_secretariat' && getSuggestions(form.committee_details.council.lead_secretariat.name, null, 'lead_secretariat').length > 0"
-                                                         class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(form.committee_details.council.lead_secretariat.name, null, 'lead_secretariat')" :key="idx"
-                                                             @mousedown.prevent="selectPerson('lead_secretariat', person)"
-                                                             class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">
-                                                                {{ person.name }}
-                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                    <!-- ── SECRETARIAT TAB ─────────────────────────────────────────── -->
+                                    <div v-show="activeCouncilTab === 'secretariat'" class="space-y-4 animate-in fade-in duration-300">
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('secretariat_lead')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Lead Secretariat</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.secretariat_lead ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.secretariat_lead" class="p-4">
+                                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 w-full">
+                                                    <div class="relative">
+                                                        <input
+                                                            v-model="form.committee_details.council.lead_secretariat.name"
+                                                            @focus.stop="activeSuggestion = 'lead_secretariat'"
+                                                            @click.stop="activeSuggestion = 'lead_secretariat'"
+                                                            @input="activeSuggestion = 'lead_secretariat'"
+                                                            type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                        <div v-if="activeSuggestion === 'lead_secretariat' && getSuggestions(form.committee_details.council.lead_secretariat.name, null, 'lead_secretariat').length > 0"
+                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.lead_secretariat.name, null, 'lead_secretariat')" :key="idx"
+                                                                 @mousedown.prevent="selectPerson('lead_secretariat', person)"
+                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
                                                             </div>
-                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
                                                     </div>
+                                                    <input v-model="form.committee_details.council.lead_secretariat.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                    <input v-model="form.committee_details.council.lead_secretariat.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                 </div>
+                                            </div>
+                                        </div>
 
-                                                <div class="space-y-2">
-                                                    <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">Secretariat Members</label>
-                                                    <div v-for="(member, index) in form.committee_details.council.secretariat_members" :key="'sm_'+index" class="relative flex items-center gap-2">
-                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                        <div class="relative flex-1">
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('secretariat_members')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Secretariat Members</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.secretariat_members ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.secretariat_members" class="p-4 space-y-2">
+                                                <div v-for="(member, index) in form.committee_details.council.secretariat_members" :key="'sm_'+index" class="flex items-start gap-2">
+                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                        <div class="relative">
                                                             <input
                                                                 type="text"
                                                                 v-model="member.name"
@@ -1076,214 +1127,244 @@ const breadcrumbs = [{ title: 'Executive Orders', href: '/eo' }];
                                                                 class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                                                                 placeholder="Search or type name..."
                                                             />
-
                                                             <div v-if="activeSuggestion === 'secretariat_members_' + index && getSuggestions(member.name, null, 'secretariat_members', index).length > 0"
                                                                  class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                                                 <div v-for="(person, idx) in getSuggestions(member.name, null, 'secretariat_members', index)" :key="idx"
                                                                      @mousedown.prevent="selectPerson('secretariat_members', person, index)"
                                                                      class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                    <div class="text-sm font-bold text-gray-800">
-                                                                        {{ person.name }}
-                                                                        <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
-                                                                    </div>
-                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <button @click="removeMember('secretariat_members', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.secretariat_members.length > 1">
+                                                        <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
+                                                    </div>
+                                                    <button @click="removeMember('secretariat_members', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.council.secretariat_members.length > 1">
+                                                        <XCircle class="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <button type="button" @click="addMember('secretariat_members')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                    <Plus class="w-3.5 h-3.5" /> Add Row
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- ── TWG TAB ──────────────────────────────────────────────────── -->
+                                    <div v-show="activeCouncilTab === 'twg'" class="space-y-4 animate-in fade-in duration-300">
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('twg_head')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">TWG Head</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.twg_head ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.twg_head" class="p-4">
+                                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 w-full">
+                                                    <div class="relative">
+                                                        <input
+                                                            v-model="form.committee_details.council.twg_head.name"
+                                                            @focus.stop="activeSuggestion = 'twg_head'"
+                                                            @click.stop="activeSuggestion = 'twg_head'"
+                                                            @input="activeSuggestion = 'twg_head'"
+                                                            type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
+                                                        <div v-if="activeSuggestion === 'twg_head' && getSuggestions(form.committee_details.council.twg_head.name, null, 'twg_head').length > 0"
+                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                            <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_head.name, null, 'twg_head')" :key="idx"
+                                                                 @mousedown.prevent="selectPerson('twg_head', person)"
+                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type.startsWith('Internal') ? 'text-blue-600' : 'text-green-600'">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input v-model="form.committee_details.council.twg_head.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                    <input v-model="form.committee_details.council.twg_head.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                            <button type="button" @click="toggleSection('twg_members')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                                <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">TWG Members</span>
+                                                <span class="text-gray-400 text-xs">{{ openSections.twg_members ? '▲' : '▼' }}</span>
+                                            </button>
+                                            <div v-show="openSections.twg_members" class="p-4 space-y-3">
+
+                                                <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 self-start">
+                                                    <button type="button" @click="memberView.twg = 'internal'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.twg === 'internal' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">TWG Internal</button>
+                                                    <button type="button" @click="memberView.twg = 'external'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.twg === 'external' ? 'bg-green-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">TWG External</button>
+                                                </div>
+
+                                                <div v-show="memberView.twg === 'internal'" class="space-y-2">
+                                                    <div v-for="(member, index) in form.committee_details.council.twg_internal_members" :key="'ti_'+index" class="flex items-start gap-2">
+                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                            <div class="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    v-model="member.name"
+                                                                    @focus.stop="activeSuggestion = 'twg_internal_' + index"
+                                                                    @click.stop="activeSuggestion = 'twg_internal_' + index"
+                                                                    class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Search or type name..."
+                                                                />
+                                                                <div v-if="activeSuggestion === 'twg_internal_' + index && getSuggestions(member.name, 'Internal', 'twg_internal', index).length > 0"
+                                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                    <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'twg_internal', index)" :key="idx"
+                                                                         @mousedown.prevent="selectPerson('twg_internal', person, index)"
+                                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-blue-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                            <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
+                                                        </div>
+                                                        <button @click="removeMember('twg_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.council.twg_internal_members.length > 1">
                                                             <XCircle class="w-4 h-4" />
                                                         </button>
                                                     </div>
-                                                    <button type="button" @click="addMember('secretariat_members')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                    <button type="button" @click="addMember('twg_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                        <Plus class="w-3.5 h-3.5" /> Add Row
+                                                    </button>
+                                                </div>
+
+                                                <div v-show="memberView.twg === 'external'" class="space-y-2">
+                                                    <div v-for="(member, index) in form.committee_details.council.twg_external_members" :key="'te_'+index" class="flex items-start gap-2">
+                                                        <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                            <div class="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    v-model="member.name"
+                                                                    @focus.stop="activeSuggestion = 'twg_external_' + index"
+                                                                    @click.stop="activeSuggestion = 'twg_external_' + index"
+                                                                    class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Search or type name..."
+                                                                />
+                                                                <div v-if="activeSuggestion === 'twg_external_' + index && getSuggestions(member.name, 'External', 'twg_external', index).length > 0"
+                                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                    <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'twg_external', index)" :key="idx"
+                                                                         @mousedown.prevent="selectPerson('twg_external', person, index)"
+                                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                        <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-green-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                            <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
+                                                        </div>
+                                                        <button @click="removeMember('twg_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.council.twg_external_members.length > 1">
+                                                            <XCircle class="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <button type="button" @click="addMember('twg_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
                                                         <Plus class="w-3.5 h-3.5" /> Add Row
                                                     </button>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-
-                                    <div v-show="activeCouncilTab === 'twg'" class="space-y-6 animate-in fade-in duration-300">
-                                        <div class="w-full md:w-1/2 pr-4">
-                                            <div class="relative">
-                                                <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">TWG Head</label>
-                                                <input
-                                                    v-model="form.committee_details.council.twg_head.name"
-                                                    @focus.stop="activeSuggestion = 'twg_head'"
-                                                    @click.stop="activeSuggestion = 'twg_head'"
-                                                    @input="activeSuggestion = 'twg_head'"
-                                                    type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search or type name..." />
-
-                                                <div v-if="activeSuggestion === 'twg_head' && getSuggestions(form.committee_details.council.twg_head.name, null, 'twg_head').length > 0"
-                                                     class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                    <div v-for="(person, idx) in getSuggestions(form.committee_details.council.twg_head.name, null, 'twg_head')" :key="idx"
-                                                         @mousedown.prevent="selectPerson('twg_head', person)"
-                                                         class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                        <div class="text-sm font-bold text-gray-800">
-                                                            {{ person.name }}
-                                                            <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
-                                                        </div>
-                                                        <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div class="space-y-2">
-                                                <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">TWG Internal Members</label>
-                                                <div v-for="(member, index) in form.committee_details.council.twg_internal_members" :key="'ti_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                    <div class="relative flex-1">
-                                                        <input
-                                                            type="text"
-                                                            v-model="member.name"
-                                                            @focus.stop="activeSuggestion = 'twg_internal_' + index"
-                                                            @click.stop="activeSuggestion = 'twg_internal_' + index"
-                                                            class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Search or type name..."
-                                                        />
-
-                                                        <div v-if="activeSuggestion === 'twg_internal_' + index && getSuggestions(member.name, 'Internal', 'twg_internal', index).length > 0"
-                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'twg_internal', index)" :key="idx"
-                                                                 @mousedown.prevent="selectPerson('twg_internal', person, index)"
-                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">
-                                                                    {{ person.name }}
-                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
-                                                                </div>
-                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button @click="removeMember('twg_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.twg_internal_members.length > 1">
-                                                        <XCircle class="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                                <button type="button" @click="addMember('twg_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                    <Plus class="w-3.5 h-3.5" /> Add Row
-                                                </button>
-                                            </div>
-
-                                            <div class="space-y-2">
-                                                <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">TWG External Members</label>
-                                                <div v-for="(member, index) in form.committee_details.council.twg_external_members" :key="'te_'+index" class="relative flex items-center gap-2">
-                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                    <div class="relative flex-1">
-                                                        <input
-                                                            type="text"
-                                                            v-model="member.name"
-                                                            @focus.stop="activeSuggestion = 'twg_external_' + index"
-                                                            @click.stop="activeSuggestion = 'twg_external_' + index"
-                                                            class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Search or type name..."
-                                                        />
-
-                                                        <div v-if="activeSuggestion === 'twg_external_' + index && getSuggestions(member.name, 'External', 'twg_external', index).length > 0"
-                                                             class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                            <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'twg_external', index)" :key="idx"
-                                                                 @mousedown.prevent="selectPerson('twg_external', person, index)"
-                                                                 class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                                <div class="text-sm font-bold text-gray-800">
-                                                                    {{ person.name }}
-                                                                    <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
-                                                                </div>
-                                                                <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button @click="removeMember('twg_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.council.twg_external_members.length > 1">
-                                                        <XCircle class="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                                <button type="button" @click="addMember('twg_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                    <Plus class="w-3.5 h-3.5" /> Add Row
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
 
-                                <div v-if="form.committee_details.type === 'program'" class="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <label class="mb-1 block text-xs font-bold text-gray-500 uppercase">Co-Lead Office <span class="lowercase text-[10px] font-normal italic text-gray-400">(Optional)</span></label>
-                                        <select v-model="form.committee_details.program.co_lead_office_id" class="w-full md:w-1/2 rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
-                                            <option value="">Select Co-Lead Office...</option>
-                                            <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
-                                        </select>
+
+                                <div v-if="form.committee_details.type === 'program'" class="space-y-4 animate-in fade-in duration-300">
+                                    <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                        <button type="button" @click="toggleSection('program_lead')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                            <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Co-Lead Office</span>
+                                            <span class="text-gray-400 text-xs">{{ openSections.program_lead ? '▲' : '▼' }}</span>
+                                        </button>
+                                        <div v-show="openSections.program_lead" class="p-4">
+                                            <select v-model="form.committee_details.program.co_lead_office_id" class="w-full md:w-1/2 rounded-lg border border-gray-300 text-sm px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                                <option value="">Select Co-Lead Office... (Optional)</option>
+                                                <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                                            </select>
+                                        </div>
                                     </div>
 
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div class="space-y-2">
-                                            <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">Internal Team Members</label>
-                                            <div v-for="(member, index) in form.committee_details.program.internal_members" :key="'pi_'+index" class="relative flex items-center gap-2">
-                                                <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                <div class="relative flex-1">
-                                                    <input
-                                                        type="text"
-                                                        v-model="member.name"
-                                                        @focus.stop="activeSuggestion = 'program_internal_' + index"
-                                                        @click.stop="activeSuggestion = 'program_internal_' + index"
-                                                        class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                        placeholder="Search or type name..."
-                                                    />
+                                    <div class="rounded-lg border border-gray-200 overflow-hidden">
+                                        <button type="button" @click="toggleSection('program_members')" class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                                            <span class="text-xs font-bold text-gray-600 uppercase tracking-wider">Program Members</span>
+                                            <span class="text-gray-400 text-xs">{{ openSections.program_members ? '▲' : '▼' }}</span>
+                                        </button>
+                                        <div v-show="openSections.program_members" class="p-4 space-y-3">
 
-                                                    <div v-if="activeSuggestion === 'program_internal_' + index && getSuggestions(member.name, 'Internal', 'program_internal', index).length > 0"
-                                                         class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'program_internal', index)" :key="idx"
-                                                             @mousedown.prevent="selectPerson('program_internal', person, index)"
-                                                             class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">
-                                                                {{ person.name }}
-                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                            <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 self-start">
+                                                <button type="button" @click="memberView.program = 'internal'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.program === 'internal' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">Internal Team</button>
+                                                <button type="button" @click="memberView.program = 'external'" class="px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition" :class="memberView.program === 'external' ? 'bg-green-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'">External Partners</button>
+                                            </div>
+
+                                            <div v-show="memberView.program === 'internal'" class="space-y-2">
+                                                <div v-for="(member, index) in form.committee_details.program.internal_members" :key="'pi_'+index" class="flex items-start gap-2">
+                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                        <div class="relative">
+                                                            <input
+                                                                type="text"
+                                                                v-model="member.name"
+                                                                @focus.stop="activeSuggestion = 'program_internal_' + index"
+                                                                @click.stop="activeSuggestion = 'program_internal_' + index"
+                                                                class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                placeholder="Search or type name..."
+                                                            />
+                                                            <div v-if="activeSuggestion === 'program_internal_' + index && getSuggestions(member.name, 'Internal', 'program_internal', index).length > 0"
+                                                                 class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(member.name, 'Internal', 'program_internal', index)" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('program_internal', person, index)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-blue-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                </div>
                                                             </div>
-                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
+                                                        <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                     </div>
+                                                    <button @click="removeMember('program_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.program.internal_members.length > 1">
+                                                        <XCircle class="w-4 h-4" />
+                                                    </button>
                                                 </div>
-                                                <button @click="removeMember('program_internal', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.program.internal_members.length > 1">
-                                                    <XCircle class="w-4 h-4" />
+                                                <button type="button" @click="addMember('program_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                    <Plus class="w-3.5 h-3.5" /> Add Row
                                                 </button>
                                             </div>
-                                            <button type="button" @click="addMember('program_internal')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                <Plus class="w-3.5 h-3.5" /> Add Row
-                                            </button>
-                                        </div>
 
-                                        <div class="space-y-2">
-                                            <label class="mb-2 block text-xs font-bold text-gray-500 uppercase">External Members / Partners</label>
-                                            <div v-for="(member, index) in form.committee_details.program.external_members" :key="'pe_'+index" class="relative flex items-center gap-2">
-                                                <span class="text-[10px] font-bold text-gray-400 w-3 text-right">{{ index + 1 }}.</span>
-                                                <div class="relative flex-1">
-                                                    <input
-                                                        type="text"
-                                                        v-model="member.name"
-                                                        @focus.stop="activeSuggestion = 'program_external_' + index"
-                                                        @click.stop="activeSuggestion = 'program_external_' + index"
-                                                        class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                                                        placeholder="Search or type name..."
-                                                    />
-
-                                                    <div v-if="activeSuggestion === 'program_external_' + index && getSuggestions(member.name, 'External', 'program_external', index).length > 0"
-                                                         class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                        <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'program_external', index)" :key="idx"
-                                                             @mousedown.prevent="selectPerson('program_external', person, index)"
-                                                             class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
-                                                            <div class="text-sm font-bold text-gray-800">
-                                                                {{ person.name }}
-                                                                <span v-if="getDeptCode(person.title)" class="text-xs text-gray-500 font-normal ml-1">({{ getDeptCode(person.title) }})</span>
+                                            <div v-show="memberView.program === 'external'" class="space-y-2">
+                                                <div v-for="(member, index) in form.committee_details.program.external_members" :key="'pe_'+index" class="flex items-start gap-2">
+                                                    <span class="text-[10px] font-bold text-gray-400 w-3 text-right mt-2.5">{{ index + 1 }}.</span>
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                                                        <div class="relative">
+                                                            <input
+                                                                type="text"
+                                                                v-model="member.name"
+                                                                @focus.stop="activeSuggestion = 'program_external_' + index"
+                                                                @click.stop="activeSuggestion = 'program_external_' + index"
+                                                                class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                                placeholder="Search or type name..."
+                                                            />
+                                                            <div v-if="activeSuggestion === 'program_external_' + index && getSuggestions(member.name, 'External', 'program_external', index).length > 0"
+                                                                 class="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                                <div v-for="(person, idx) in getSuggestions(member.name, 'External', 'program_external', index)" :key="idx"
+                                                                     @mousedown.prevent="selectPerson('program_external', person, index)"
+                                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                                                                    <div class="text-sm font-bold text-gray-800">{{ person.name }}</div>
+                                                                    <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-green-600">{{ person.type }}<span v-if="person.position"> · {{ person.position }}</span></div>
+                                                                </div>
                                                             </div>
-                                                            <div class="text-[10px] font-bold uppercase tracking-wider mt-0.5" :class="person.type === 'Internal' ? 'text-blue-600' : 'text-green-600'">{{ person.type }}</div>
                                                         </div>
+                                                        <input v-model="member.position" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Position" />
+                                                        <input v-model="member.agency" type="text" class="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Agency / Office" />
                                                     </div>
+                                                    <button @click="removeMember('program_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1 mt-1.5" v-if="form.committee_details.program.external_members.length > 1">
+                                                        <XCircle class="w-4 h-4" />
+                                                    </button>
                                                 </div>
-                                                <button @click="removeMember('program_external', index)" type="button" class="text-red-300 hover:text-red-500 transition p-1" v-if="form.committee_details.program.external_members.length > 1">
-                                                    <XCircle class="w-4 h-4" />
+                                                <button type="button" @click="addMember('program_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
+                                                    <Plus class="w-3.5 h-3.5" /> Add Row
                                                 </button>
                                             </div>
-                                            <button type="button" @click="addMember('program_external')" class="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition ml-5">
-                                                <Plus class="w-3.5 h-3.5" /> Add Row
-                                            </button>
                                         </div>
                                     </div>
                                 </div>

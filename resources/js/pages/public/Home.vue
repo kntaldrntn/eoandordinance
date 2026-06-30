@@ -517,7 +517,7 @@ const formatStructuredMembers = (namesArray: string[]) => {
                                 </div>
                                 <div v-else class="flex items-center gap-1.5">
                                     <UserCheck class="w-3.5 h-3.5 text-gray-400" />
-                                    <span>Author/Sponsor: <span class="text-gray-900 font-bold">{{ getSponsors(item) }}</span></span>
+                                    <span class="text-gray-900 font-bold">{{ getSponsors(item) }}</span>
                                 </div>
                             </div>
 
