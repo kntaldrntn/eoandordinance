@@ -119,7 +119,7 @@ const pieOptions = (labels: string[]) => ({
         style: { fontSize: '12px', fontWeight: 'bold' }
     },
     stroke: { width: 0 },
-    legend: { show: true, position: 'right', fontSize: '11px', markers: { radius: 12 } }
+    legend: { show: true, position: 'right', fontSize: '10px', markers: { radius: 12 } }
 });
 
 const eoStatusOptions = computed(() => pieOptions(props.eo_analytics.status_labels));

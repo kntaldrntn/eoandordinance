@@ -111,7 +111,7 @@ class PublicEOController extends Controller
         // Only show active records with New or Amendment status
         $query->where('is_active', true);
         $query->whereHas('status', function ($q) {
-            $q->whereIn('name', ['New', 'Amendment']);
+            $q->whereIn('name', ['New', 'Amendment', 'Amended']);
         });
         $query->orderBy('id', 'desc');
 

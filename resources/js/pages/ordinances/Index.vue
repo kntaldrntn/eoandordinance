@@ -1583,10 +1583,14 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                                 </div>
                             </div>
 
-                            <div class="pt-4 border-t pt-5">
-                                <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Document (PDF)</label>
-                                <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
-                                <p class="mt-1 text-[10px] text-gray-400 italic">{{ isEdit ? 'Leave empty to keep existing PDF.' : 'Optional: Upload the signed PDF.' }}</p>
+                            <div class="bg-blue-50/30 p-5 rounded-xl border border-blue-100 relative mt-4">
+                                <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">5. Signed Document</div>
+                                <div class="pt-2">
+                                    <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Upload PDF File</label>
+                                    <input type="file" @change="handleFileChange" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-medium hover:file:bg-blue-700 cursor-pointer transition-colors" :class="{'ring-2 ring-red-500 border border-red-500 rounded-lg': form.errors.file}"/>
+                                    <p v-if="form.errors.file" class="text-[10px] text-red-500 mt-1 font-bold">{{ form.errors.file }}</p>
+                                    <p v-else class="text-[10px] text-gray-400 mt-2 italic">{{ isEdit ? 'Leave empty to keep existing PDF.' : 'Optional: Upload the signed PDF. Max size 20MB.' }}</p>
+                                </div>
                             </div>
 
                             <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100 mt-8">
@@ -1697,12 +1701,19 @@ const breadcrumbs = [{ title: 'Ordinances', href: '/ordinances' }];
                             </div>
 
                             <div>
-                                <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Document (PDF)</label>
-                                <input type="file" @change="(e) => { const t = e.target as HTMLInputElement; irrForm.file = t.files && t.files[0] ? t.files[0] : null }" accept="application/pdf" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+                                <div class="bg-blue-50/30 p-5 rounded-xl border border-blue-100 relative">
+    <div class="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest border border-blue-100 rounded-full">Signed Document</div>
+    <div class="pt-2">
+        <label class="mb-2 block text-xs font-bold text-gray-600 uppercase">Upload PDF File</label>
+        <input type="file" @change="(e) => { const t = e.target as HTMLInputElement; irrForm.file = t.files && t.files[0] ? t.files[0] : null }" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-medium hover:file:bg-blue-700 cursor-pointer transition-colors" :class="{'ring-2 ring-red-500 border border-red-500 rounded-lg': irrForm.errors.file}"/>
+        <p v-if="irrForm.errors.file" class="text-[10px] text-red-500 mt-1 font-bold">{{ irrForm.errors.file }}</p>
+        <p v-else class="text-[10px] text-gray-400 mt-2 italic">Max size 20MB. Ensure the document is fully signed before uploading.</p>
+    </div>
+</div>
 
-                                <div v-if="allIrrs.length > 0" class="mt-6 border-t pt-4">
-                                    <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3">Current IRRs Linked</div>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+<div v-if="allIrrs.length > 0" class="border-t pt-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3">Current IRRs Linked</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div v-for="irr in allIrrs" :key="irr.id"
                                             class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors"
                                             :class="!irr.is_active ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200 hover:border-blue-200'">

@@ -478,16 +478,16 @@ const formatStructuredMembers = (namesArray: string[]) => {
                                     {{ activeTab === 'eo' ? item.eo_number : item.ordinance_number }}
                                 </span>
 
-                                <span v-if="item.is_active" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
-                                    <CheckCircle2 class="w-3 h-3" /> In Effect
+                                <span v-if="item.is_active" class="inline-flex items-center justify-center bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-emerald-200 shadow-sm">
+                                     In Effect
                                 </span>
-                                <span v-else class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-gray-50 text-gray-500 border border-gray-200 shadow-sm">
-                                    <XCircle class="w-3 h-3" /> Inactive
+                                <span v-else class="inline-flex items-center justify-center bg-gray-50 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-gray-200 shadow-sm">
+                                     Inactive
                                 </span>
 
-                                <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-white text-gray-800 border border-gray-300 shadow-sm">
+                                <!-- <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-white text-gray-800 border border-gray-300 shadow-sm">
                                     NEW
-                                </span>
+                                </span> -->
                             </div>
 
                             <!-- Crisp Title -->
@@ -516,7 +516,7 @@ const formatStructuredMembers = (namesArray: string[]) => {
                                     <span><span class="text-gray-900 font-bold">{{ getLeadOffice(item.departments) }}</span></span>
                                 </div>
                                 <div v-else class="flex items-center gap-1.5">
-                                    <UserCheck class="w-3.5 h-3.5 text-gray-400" />
+                                    <Building2 class="w-3.5 h-3.5 text-gray-400" />
                                     <span class="text-gray-900 font-bold">{{ getSponsors(item) }}</span>
                                 </div>
                             </div>
